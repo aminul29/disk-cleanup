@@ -1,0 +1,7 @@
+PySide6>=6.8
+platformdirs>=4.3
+psutil>=6.0
+pydantic>=2.8
+pyinstaller>=6.10
+pytest>=8.3
+send2trash>=1.8

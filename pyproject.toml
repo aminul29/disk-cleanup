@@ -1,0 +1,17 @@
+[project]
+name = "diskwise-ai"
+version = "0.1.0"
+description = "Local-first Windows disk cleanup MVP built with Python and PySide6."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "PySide6>=6.8",
+  "platformdirs>=4.3",
+  "psutil>=6.0",
+  "pydantic>=2.8",
+  "pyinstaller>=6.10",
+  "pytest>=8.3",
+  "send2trash>=1.8",
+]
+
+[tool.ruff]
+line-length = 100
