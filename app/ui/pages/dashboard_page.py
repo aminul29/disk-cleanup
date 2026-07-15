@@ -162,10 +162,14 @@ class DashboardPage(QWidget):
         if latest_report is not None:
             self.view_latest_report_button.setEnabled(True)
             self.view_latest_report_button.setText(
-                f"Latest Report: {format_bytes(latest_report.bytes_recovered)} moved"
+                f"Latest Report: {format_bytes(latest_report.bytes_recovered)}"
+            )
+            self.view_latest_report_button.setToolTip(
+                f"Open the latest cleanup report ({format_bytes(latest_report.bytes_recovered)} moved)."
             )
         else:
             self.view_latest_report_button.setText("View Latest Report")
+            self.view_latest_report_button.setToolTip("")
             self.view_latest_report_button.setEnabled(False)
 
     def set_scan_history(self, scan: ScanHistoryItem) -> None:

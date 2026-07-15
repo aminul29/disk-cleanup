@@ -47,6 +47,9 @@ def _light_style() -> str:
         background: #0b1220;
         border: none;
     }
+    QWidget#SidebarBrand, QWidget#SidebarBrandText {
+        background: transparent;
+    }
     QLabel#AppTitle {
         color: white;
         font-size: 22px;
@@ -203,7 +206,7 @@ def _light_style() -> str:
     }
     QLabel[class="CardValueCompact"] {
         color: #08111f;
-        font-size: 24px;
+        font-size: 20px;
         font-weight: 800;
     }
     QLabel[class="HeroValue"] {

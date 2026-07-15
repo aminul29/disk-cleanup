@@ -6,10 +6,12 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QApplication
 
 from app.models import CleanupCategory, CleanupItem, RiskLevel, ScanResult
 from app.ui.pages.dashboard_page import DashboardPage
+from app.ui.pages.scan_page import ScanPage
 from app.ui.main_window import MainWindow
 
 
@@ -97,6 +99,35 @@ def test_dashboard_keeps_live_cleanup_actions_enabled_after_history_refresh(
 
     assert page.view_results_button.isEnabled()
     assert page.clean_safe_button.isEnabled()
+
+    page.deleteLater()
+    app.processEvents()
+
+
+def test_scan_page_actions_do_not_overlap_stages_at_minimum_window_size() -> None:
+    app = QApplication.instance() or QApplication([])
+    settings = SimpleNamespace(
+        get_scan_mode=lambda: "Deep",
+        set_scan_mode=lambda _mode: None,
+    )
+    page = ScanPage(SimpleNamespace(), SimpleNamespace(), settings)
+    page.resize(842, 720)
+    page.show()
+    app.processEvents()
+
+    assert page.minimumSizeHint().height() <= 720
+
+    def assert_actions_clear_stage_list() -> None:
+        stage_rect = QRect(page.stage_list.mapTo(page, QPoint()), page.stage_list.size())
+        start_rect = QRect(page.start_button.mapTo(page, QPoint()), page.start_button.size())
+        cancel_rect = QRect(page.cancel_button.mapTo(page, QPoint()), page.cancel_button.size())
+        assert not stage_rect.intersects(start_rect)
+        assert not stage_rect.intersects(cancel_rect)
+
+    assert_actions_clear_stage_list()
+    page.on_progress("Browser cache", 42, 710 * 1024 * 1024, 48)
+    app.processEvents()
+    assert_actions_clear_stage_list()
 
     page.deleteLater()
     app.processEvents()

@@ -35,6 +35,7 @@ class StatCard(Card):
         self.title_label.setProperty("class", "CardTitle")
         self.value_label = QLabel(value)
         self.value_label.setProperty("class", "CardValue")
+        self.value_label.setWordWrap(True)
         self.detail_label = QLabel(detail)
         self.detail_label.setObjectName("MutedText")
         layout = QVBoxLayout(self)

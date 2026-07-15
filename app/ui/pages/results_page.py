@@ -65,7 +65,9 @@ class CleanupPreviewDialog(QDialog):
         self.resize(980, 580)
 
         total_bytes = sum(item.size_bytes for item in selected_items)
-        categories = sorted({item.category for item in selected_items})
+        categories = sorted(
+            {item.category.replace("_", " ").title() for item in selected_items}
+        )
 
         title = QLabel("Ready to move Safe items")
         title.setObjectName("SectionTitle")
@@ -90,11 +92,11 @@ class CleanupPreviewDialog(QDialog):
 
         table = QTableWidget(min(len(selected_items), 100), 5)
         table.setHorizontalHeaderLabels(["File", "Location", "Category", "Size", "Why it is Safe"])
-        table.setColumnWidth(0, 180)
-        table.setColumnWidth(1, 300)
-        table.setColumnWidth(2, 130)
-        table.setColumnWidth(3, 100)
-        table.setColumnWidth(4, 260)
+        table.verticalHeader().hide()
+        table.setColumnWidth(0, 150)
+        table.setColumnWidth(1, 270)
+        table.setColumnWidth(2, 135)
+        table.setColumnWidth(3, 90)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.horizontalHeader().setStretchLastSection(True)
@@ -102,7 +104,7 @@ class CleanupPreviewDialog(QDialog):
             values = [
                 item.file_name,
                 item.file_path,
-                item.category,
+                item.category.replace("_", " ").title(),
                 format_bytes(item.size_bytes),
                 item.reason,
             ]
@@ -116,8 +118,12 @@ class CleanupPreviewDialog(QDialog):
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
         ok_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_button = self.buttons.button(QDialogButtonBox.StandardButton.Cancel)
         ok_button.setText("Clean Safe Items")
         ok_button.setEnabled(False)
+        ok_button.setIcon(icon("shield-check", "#ffffff"))
+        cancel_button.setProperty("class", "Secondary")
+        cancel_button.setIcon(icon("x", "#4f7fe8"))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 20)

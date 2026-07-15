@@ -8,7 +8,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEventLoop, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox, QTableWidget
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox, QTableWidget
 
 from app.models import CleanupCategory, CleanupItem, CleanupResult, RiskLevel, ScanResult
 from app.services import cleanup_service as cleanup_module
@@ -214,8 +214,14 @@ def test_cleanup_preview_shows_location_and_recycle_bin_confirmation(tmp_path: P
     assert table is not None
     assert table.horizontalHeaderItem(1).text() == "Location"
     assert table.item(0, 1).text() == item.file_path
+    assert table.item(0, 2).text() == "User Temp"
+    assert table.verticalHeader().isHidden()
     assert "Recycle Bin" in dialog.confirm_checkbox.text()
     assert dialog.buttons.button(dialog.buttons.StandardButton.Ok).isEnabled() is False
+    assert (
+        dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel).property("class")
+        == "Secondary"
+    )
 
     dialog.confirm_checkbox.setChecked(True)
     assert dialog.buttons.button(dialog.buttons.StandardButton.Ok).isEnabled() is True

@@ -116,7 +116,7 @@ class ScanPage(QWidget):
 
         self.stage_list = QListWidget()
         self.stage_list.setObjectName("SettingsList")
-        self.stage_list.setMinimumHeight(250)
+        self.stage_list.setMinimumHeight(200)
         self._reset_stage_list()
 
         self.log = QTextEdit()
@@ -165,7 +165,7 @@ class ScanPage(QWidget):
         card_layout.addWidget(self.log)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 28, 30, 28)
+        layout.setContentsMargins(30, 24, 30, 24)
         layout.setSpacing(14)
         layout.addWidget(page_header("Smart Scan", "Track each scan stage while DiskWise analyzes local storage."))
         layout.addWidget(card)
@@ -231,7 +231,7 @@ class ScanPage(QWidget):
         total_files = sum(count for count, _ in self.stage_totals.values())
         total_bytes = sum(size for _, size in self.stage_totals.values())
         self.files_card.set_values(f"{total_files:,}", f"Current stage: {category}")
-        self.space_card.set_values(format_bytes(total_bytes), "Findings across completed stages")
+        self.space_card.set_values(format_bytes(total_bytes), "Across completed stages")
         self._activate_stage(category)
 
     def on_completed(self, result: ScanResult) -> None:
