@@ -8,12 +8,12 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEventLoop, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QTableWidget
 
 from app.models import CleanupCategory, CleanupItem, CleanupResult, RiskLevel, ScanResult
 from app.services import cleanup_service as cleanup_module
 from app.services.cleanup_service import CleanupService
-from app.ui.pages.results_page import ResultsPage
+from app.ui.pages.results_page import CleanupPreviewDialog, ResultsPage
 
 
 class FakeReportService:
@@ -202,4 +202,23 @@ def test_results_selection_includes_safe_items_beyond_visible_tree_limit(tmp_pat
     assert not any(item.is_selected for item in items)
 
     page.deleteLater()
+    app.processEvents()
+
+
+def test_cleanup_preview_shows_location_and_recycle_bin_confirmation(tmp_path: Path) -> None:
+    app = QApplication.instance() or QApplication([])
+    item = make_item("preview", tmp_path / "preview.tmp", 64)
+    dialog = CleanupPreviewDialog([item], 2, 1)
+
+    table = dialog.findChild(QTableWidget)
+    assert table is not None
+    assert table.horizontalHeaderItem(1).text() == "Location"
+    assert table.item(0, 1).text() == item.file_path
+    assert "Recycle Bin" in dialog.confirm_checkbox.text()
+    assert dialog.buttons.button(dialog.buttons.StandardButton.Ok).isEnabled() is False
+
+    dialog.confirm_checkbox.setChecked(True)
+    assert dialog.buttons.button(dialog.buttons.StandardButton.Ok).isEnabled() is True
+
+    dialog.deleteLater()
     app.processEvents()

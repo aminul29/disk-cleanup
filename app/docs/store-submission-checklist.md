@@ -42,6 +42,7 @@
 ## Listing Assets
 
 - [ ] App logos generated with `scripts\generate-store-assets.py` are visually checked.
-- [ ] At least four clean screenshots are supplied at 1366 x 768 or larger.
+- [ ] Regenerate sanitized screenshots with `scripts\capture-store-screenshots.py`.
+- [ ] At least four generated screenshots are visually checked at 1366 x 768 or larger.
 - [ ] Listing text explains that space is reclaimed after the Recycle Bin is emptied.
 - [ ] Support, privacy, and AI reporting links are public and working.

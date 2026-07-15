@@ -19,3 +19,13 @@ Required build-machine components:
 Visual Studio, .NET, WinUI, Rust, Windows App SDK, and a local code-signing certificate are not required for Microsoft Store submission. The Store signs an accepted package.
 
 The manifest template deliberately does not contain guessed identity values. A package must be built with the exact Identity Name and Publisher assigned in Partner Center.
+
+## Store Screenshots
+
+Generate listing screenshots without exposing local device data:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\capture-store-screenshots.py
+```
+
+The script renders the real production pages at a 16:9 1440 x 810 logical viewport with a temporary SQLite database and synthetic `C:\Users\Demo` paths. It never reads the user's DiskWise database, API key, scan history, or disk usage for the captured values.

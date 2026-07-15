@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from threading import Event
 
-from PySide6.QtCore import QObject, QThread, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import QObject, QRect, QThread, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -61,15 +62,16 @@ class CleanupPreviewDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Cleanup Preview")
         self.setModal(True)
-        self.resize(760, 520)
+        self.resize(980, 580)
 
         total_bytes = sum(item.size_bytes for item in selected_items)
         categories = sorted({item.category for item in selected_items})
 
-        title = QLabel("Ready to clean safe items")
+        title = QLabel("Ready to move Safe items")
         title.setObjectName("SectionTitle")
         description = QLabel(
-            "DiskWise will only remove selected Safe items. Review and Protected items are excluded."
+            "DiskWise will move only selected Safe items to the Windows Recycle Bin. "
+            "Review and Protected items are excluded."
         )
         description.setObjectName("SectionDescription")
         description.setWordWrap(True)
@@ -86,18 +88,20 @@ class CleanupPreviewDialog(QDialog):
         )
         risk_note.setObjectName("MutedText")
 
-        table = QTableWidget(min(len(selected_items), 100), 4)
-        table.setHorizontalHeaderLabels(["File", "Category", "Size", "Reason"])
-        table.setColumnWidth(0, 240)
-        table.setColumnWidth(1, 140)
-        table.setColumnWidth(2, 110)
-        table.setColumnWidth(3, 300)
+        table = QTableWidget(min(len(selected_items), 100), 5)
+        table.setHorizontalHeaderLabels(["File", "Location", "Category", "Size", "Why it is Safe"])
+        table.setColumnWidth(0, 180)
+        table.setColumnWidth(1, 300)
+        table.setColumnWidth(2, 130)
+        table.setColumnWidth(3, 100)
+        table.setColumnWidth(4, 260)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.horizontalHeader().setStretchLastSection(True)
         for row, item in enumerate(selected_items[:100]):
             values = [
                 item.file_name,
+                item.file_path,
                 item.category,
                 format_bytes(item.size_bytes),
                 item.reason,
@@ -105,7 +109,9 @@ class CleanupPreviewDialog(QDialog):
             for column, value in enumerate(values):
                 table.setItem(row, column, QTableWidgetItem(value))
 
-        self.confirm_checkbox = QCheckBox("I understand that selected safe files will be removed.")
+        self.confirm_checkbox = QCheckBox(
+            "I understand that the selected Safe files will be moved to the Recycle Bin."
+        )
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
@@ -253,17 +259,15 @@ class ResultsPage(QWidget):
         self.ai_summary = QLabel("Run a scan, then ask AI for prioritized cleanup advice.")
         self.ai_summary.setObjectName("InfoPill")
         self.ai_summary.setWordWrap(True)
-        self.ai_plan = QLabel("")
-        self.ai_plan.setObjectName("SectionDescription")
-        self.ai_plan.setWordWrap(True)
-        self.ai_review = QLabel("")
-        self.ai_review.setObjectName("SectionDescription")
-        self.ai_review.setWordWrap(True)
-        self.ai_warnings = QLabel("")
-        self.ai_warnings.setObjectName("SectionDescription")
-        self.ai_warnings.setWordWrap(True)
-        for detail in (self.ai_plan, self.ai_review, self.ai_warnings):
-            detail.hide()
+        self.ai_summary.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.ai_details = QTextEdit()
+        self.ai_details.setObjectName("AiDetails")
+        self.ai_details.setReadOnly(True)
+        self.ai_details.setMinimumHeight(190)
+        self.ai_details.setMaximumHeight(190)
+        self.ai_details.hide()
 
         self.ai_card = Card()
         self.ai_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
@@ -279,9 +283,7 @@ class ResultsPage(QWidget):
         ai_header.addWidget(self.ai_button)
         ai_layout.addLayout(ai_header)
         ai_layout.addWidget(self.ai_summary)
-        ai_layout.addWidget(self.ai_plan)
-        ai_layout.addWidget(self.ai_review)
-        ai_layout.addWidget(self.ai_warnings)
+        ai_layout.addWidget(self.ai_details)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
@@ -328,16 +330,13 @@ class ResultsPage(QWidget):
         self.tree.setVisible(bool(result.categories))
         self.preview_button.setEnabled(self._has_safe_items())
         self.ai_button.setEnabled(bool(result.categories) and self.ai_enabled)
-        self.ai_summary.setText(
+        self._set_ai_summary(
             "AI can prioritize safe cleanup and review-only categories using aggregate scan data."
             if self.ai_enabled
             else "AI advice is disabled in Settings."
         )
-        self.ai_plan.clear()
-        self.ai_review.clear()
-        self.ai_warnings.clear()
-        for detail in (self.ai_plan, self.ai_review, self.ai_warnings):
-            detail.hide()
+        self.ai_details.clear()
+        self.ai_details.hide()
         self.report_ai_button.hide()
         self.apply_filters()
 
@@ -570,8 +569,12 @@ class ResultsPage(QWidget):
         if result.errors:
             message += (
                 f"\n\n{len(result.errors):,} issue(s) were recorded. Files that are open or "
-                "locked by Windows remain available for a later scan."
+                "locked by Windows remain available for a later scan.\n\n"
+                "First issues:\n"
+                + "\n".join(f"- {error[:240]}" for error in result.errors[:3])
             )
+            if len(result.errors) > 3:
+                message += "\n- Open Reports to review the complete issue list."
 
         if result.canceled:
             QMessageBox.information(self, "Cleanup Canceled", message)
@@ -634,16 +637,13 @@ class ResultsPage(QWidget):
         self.empty_label.setVisible(not self.current_scan.categories)
         self.tree.setVisible(bool(self.current_scan.categories))
         self.preview_button.setEnabled(self._has_safe_items())
-        self.ai_summary.setText(
+        self._set_ai_summary(
             "Cleanup updated this scan. Ask AI again for advice based on the remaining items."
             if self.ai_enabled
             else "AI advice is disabled in Settings."
         )
-        self.ai_plan.clear()
-        self.ai_review.clear()
-        self.ai_warnings.clear()
-        for detail in (self.ai_plan, self.ai_review, self.ai_warnings):
-            detail.hide()
+        self.ai_details.clear()
+        self.ai_details.hide()
         self.report_ai_button.hide()
         self.apply_filters()
 
@@ -721,7 +721,7 @@ class ResultsPage(QWidget):
     def generate_ai_advice(self) -> None:
         if self.current_scan is None or self.ai_thread is not None:
             return
-        self.ai_summary.setText("AI is reviewing aggregate scan data...")
+        self._set_ai_summary("AI is reviewing aggregate scan data...")
         self.ai_button.setEnabled(False)
         self.ai_thread = QThread()
         self.ai_worker = ResultsAiWorker(self.ai_service, self.current_scan)
@@ -737,18 +737,26 @@ class ResultsPage(QWidget):
         self.ai_thread.start()
 
     def on_ai_completed(self, recommendation: AiRecommendation) -> None:
-        self.ai_summary.setText(f"{recommendation.summary}\nConfidence: {recommendation.confidence}")
-        self.ai_plan.setText(self._format_ai_section("Safe cleanup plan", recommendation.safe_cleanup_plan))
-        self.ai_review.setText(self._format_ai_section("Review priorities", recommendation.review_priorities))
+        self._set_ai_summary(
+            f"{recommendation.summary}\nConfidence: {recommendation.confidence}"
+        )
         warnings = recommendation.warnings or recommendation.safety_notes
-        self.ai_warnings.setText(self._format_ai_section("Warnings and safety notes", warnings))
-        for detail in (self.ai_plan, self.ai_review, self.ai_warnings):
-            detail.setVisible(bool(detail.text()))
+        sections = [
+            self._format_ai_section("Safe cleanup plan", recommendation.safe_cleanup_plan),
+            self._format_ai_section("Warnings and safety notes", warnings),
+            self._format_ai_section("Review priorities", recommendation.review_priorities),
+        ]
+        self.ai_details.setPlainText("\n".join(section for section in sections if section))
+        self.ai_details.show()
+        self.ai_card.layout().activate()
+        self.ai_card.updateGeometry()
         self.report_ai_button.show()
         self.ai_button.setEnabled(self.ai_enabled and self.current_scan is not None)
 
     def on_ai_failed(self, message: str) -> None:
-        self.ai_summary.setText(f"AI advice could not be generated: {message}")
+        self._set_ai_summary(f"AI advice could not be generated: {message}")
+        self.ai_details.clear()
+        self.ai_details.hide()
         self.ai_button.setEnabled(self.ai_enabled and self.current_scan is not None)
 
     def report_ai_output(self) -> None:
@@ -756,8 +764,21 @@ class ResultsPage(QWidget):
 
     def _format_ai_section(self, title: str, items: list[str]) -> str:
         if not items:
-            return f"{title}: None."
+            return ""
         return f"{title}:\n" + "\n".join(f"- {item}" for item in items)
+
+    def _set_ai_summary(self, text: str) -> None:
+        self.ai_summary.setText(text)
+        width = max(self.ai_summary.width() - 24, 480)
+        text_height = QFontMetrics(self.ai_summary.font()).boundingRect(
+            QRect(0, 0, width, 200),
+            Qt.TextFlag.TextWordWrap,
+            text,
+        ).height()
+        self.ai_summary.setFixedHeight(
+            min(max(text_height + 22, 42), 82)
+        )
+        self.ai_summary.updateGeometry()
 
     def _clear_ai_thread(self) -> None:
         self.ai_thread = None
@@ -769,9 +790,9 @@ class ResultsPage(QWidget):
             enabled and self.current_scan is not None and bool(self.current_scan.categories)
         )
         if not enabled:
-            self.ai_summary.setText("AI advice is disabled in Settings.")
+            self._set_ai_summary("AI advice is disabled in Settings.")
         elif self.current_scan is not None:
-            self.ai_summary.setText(
+            self._set_ai_summary(
                 "AI can prioritize safe cleanup and review-only categories using aggregate scan data."
             )
 

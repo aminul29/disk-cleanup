@@ -53,6 +53,6 @@ Protected files are never selected and never cleaned.
 3. Validate that every item is Safe.
 4. Validate that every path is inside a known temp/cache root.
 5. Reject protected folders even when they are nested inside a safe root.
-6. Require Recycle Bin deletion through `send2trash`; never fall back to permanent deletion.
+6. Require Recycle Bin deletion through `send2trash`; Windows builds use pywin32-backed `IFileOperation` and never fall back to permanent deletion.
 7. Log cleanup results to SQLite.
 8. Skip failures and continue safely.

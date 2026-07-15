@@ -1,6 +1,6 @@
 # DiskWise AI
 
-DiskWise AI is a local-first Windows disk cleanup and storage-review app built with Python 3.12, PySide6, SQLite, psutil, pydantic, platformdirs, and send2trash.
+DiskWise AI is a local-first Windows disk cleanup and storage-review app built with Python 3.12, PySide6, SQLite, psutil, pydantic, platformdirs, and send2trash. Windows builds include pywin32 so Send2Trash uses the modern `IFileOperation` Recycle Bin API.
 
 It scans supported user-level locations, classifies findings as Safe, Review, or Protected, previews cleanup, and moves only selected Safe files to the Windows Recycle Bin. Review and Protected files are never cleaned.
 
@@ -79,3 +79,11 @@ The Store signs the uploaded MSIX. Validate it before submission:
 ```
 
 Submission copy, privacy details, and release gates are in [store-listing.md](app/docs/store-listing.md) and [store-submission-checklist.md](app/docs/store-submission-checklist.md).
+
+Generate privacy-safe Store screenshots from the production UI using isolated demo data:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\capture-store-screenshots.py
+```
+
+Output: `packaging\store\screenshots\*.png`. The capture process does not read or display the user's saved scans, paths, API key, or disk statistics.

@@ -163,6 +163,33 @@ def _light_style() -> str:
         border: 1px solid #dfe5ef;
         border-radius: 8px;
     }
+    QFrame[class="PlanCard"], QFrame[class="PlanCardCurrent"] {
+        background: white;
+        border: 1px solid #dfe5ef;
+        border-radius: 8px;
+    }
+    QFrame[class="PlanCardCurrent"] {
+        border: 2px solid #2f6df6;
+    }
+    QLabel[class="PlanBadge"], QLabel[class="PlanBadgeCurrent"] {
+        color: #52627a;
+        background: #eef2f7;
+        border: 1px solid #d8e0eb;
+        border-radius: 6px;
+        padding: 4px 7px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    QLabel[class="PlanBadgeCurrent"] {
+        color: #1748ad;
+        background: #eaf1ff;
+        border-color: #b7cdfa;
+    }
+    QLabel[class="PlanPrice"] {
+        color: #08111f;
+        font-size: 22px;
+        font-weight: 800;
+    }
     QLabel[class="CardTitle"] {
         font-size: 13px;
         color: #52627a;
@@ -222,10 +249,13 @@ def _light_style() -> str:
         selection-background-color: #dbe8ff;
         selection-color: #0f172a;
     }
-    QTextEdit#AdvisorText {
+    QTextEdit#AdvisorText, QTextEdit#AiDetails {
         background: transparent;
         border: none;
         padding: 0;
+    }
+    QTextEdit#AiDetails {
+        font-size: 13px;
     }
     QTableWidget::item, QTreeWidget::item {
         padding: 6px;
@@ -472,5 +502,25 @@ def _dark_style() -> str:
     QFrame[class="OnboardingRow"] {
         background: #181b21;
         border-color: #343a45;
+    }
+    QFrame[class="PlanCard"], QFrame[class="PlanCardCurrent"] {
+        background: #181b21;
+        border-color: #343a45;
+    }
+    QFrame[class="PlanCardCurrent"] {
+        border-color: #3b78ff;
+    }
+    QLabel[class="PlanBadge"] {
+        color: #cbd5e1;
+        background: #222730;
+        border-color: #3b424e;
+    }
+    QLabel[class="PlanBadgeCurrent"] {
+        color: #bfdbfe;
+        background: #18263d;
+        border-color: #2e5ca8;
+    }
+    QLabel[class="PlanPrice"] {
+        color: #f8fafc;
     }
     """

@@ -26,6 +26,8 @@
 - Category selection includes Safe items beyond the first 1,000 displayed rows.
 - Cleanup runs in the background with progress and cancellation.
 - Accessible files move to the Recycle Bin; no permanent-delete fallback is used.
+- After a live scan, Dashboard actions remain enabled and **Clean Safe Items** opens the cleanup preview.
+- The packaged app log reports `Recycle Bin backend: Windows IFileOperation`.
 - Locked, missing, and policy-blocked files remain in place and are reported.
 - Cleanup report is created after cleanup.
 

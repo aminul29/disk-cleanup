@@ -63,15 +63,15 @@ class LargeFilesPage(QWidget):
 
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(["Name", "Path", "Size", "Modified", "Type", "Risk", "Reason"])
-        self.table.setColumnWidth(0, 220)
-        self.table.setColumnWidth(1, 420)
-        self.table.setColumnWidth(6, 300)
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        for column, width in enumerate([180, 330, 90, 140, 60, 75]):
+            self.table.setColumnWidth(column, width)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
@@ -119,6 +119,8 @@ class LargeFilesPage(QWidget):
                 table_item = QTableWidgetItem(value)
                 if column == 5:
                     table_item.setForeground(Qt.GlobalColor.darkYellow)
+                if column in {1, 6}:
+                    table_item.setToolTip(value)
                 self.table.setItem(row, column, table_item)
 
         has_items = bool(items)

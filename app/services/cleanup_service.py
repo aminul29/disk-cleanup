@@ -32,6 +32,17 @@ class CleanupService:
         self.safe_roots = safe_roots
         self.protected_roots = protected_roots
         self.logger = logging.getLogger(__name__)
+        self.logger.info("Recycle Bin backend: %s", self.recycle_bin_backend_name())
+
+    def recycle_bin_backend_name(self) -> str:
+        if send2trash is None:
+            return "unavailable"
+        module_name = getattr(send2trash, "__module__", "")
+        if module_name == "send2trash.win.modern":
+            return "Windows IFileOperation"
+        if module_name == "send2trash.win.legacy":
+            return "legacy Windows shell"
+        return module_name or "send2trash"
 
     def preview_items(self, items: list[CleanupItem]) -> list[CleanupItem]:
         return [
@@ -99,6 +110,10 @@ class CleanupService:
                     raise RuntimeError("Recycle Bin support is unavailable")
                 current_size = path.stat().st_size
                 send2trash(str(path))
+                if path.exists():
+                    raise RuntimeError(
+                        "Windows returned without moving this item to the Recycle Bin"
+                    )
                 files_deleted += 1
                 bytes_recovered += current_size
                 categories.add(item.category)

@@ -144,7 +144,9 @@ class DashboardPage(QWidget):
     def load_persisted_summary(self) -> None:
         latest_scan = self.report_service.latest_scan()
         latest_report = self.report_service.latest_cleanup_report()
-        if latest_scan is None:
+        if self.current_scan is not None:
+            self.set_scan_result(self.current_scan)
+        elif latest_scan is None:
             self.safe_card.set_values("No scan", "Start a quick scan to calculate safe cleanup")
             self.review_card.set_values("No scan", "Review candidates will appear after scanning")
             self.last_scan_card.set_values("Not scanned yet", "No local scan history found")

@@ -3,6 +3,7 @@ platformdirs>=4.3
 python-lucide>=0.5,<1
 psutil>=6.0
 pydantic>=2.8
+pywin32>=308; platform_system == "Windows"
 pyinstaller>=6.10
 pytest>=8.3
 ruff>=0.12

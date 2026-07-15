@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from threading import Event
+import sys
+
+import pytest
 
 from app.models import CleanupItem, RiskLevel
 from app.services import cleanup_service as cleanup_module
@@ -191,3 +194,25 @@ def test_cleanup_reports_progress_and_actual_recovered_size(monkeypatch, tmp_pat
     assert result.bytes_recovered == len(b"actual file bytes")
     assert result.deleted_item_ids == [item.id]
     assert progress == [(1, 1, safe_file.name)]
+
+
+def test_cleanup_verifies_recycle_bin_move_completed(monkeypatch, tmp_path: Path) -> None:
+    safe_file = tmp_path / "still-present.tmp"
+    safe_file.write_text("backend returned without moving me")
+    monkeypatch.setattr(cleanup_module, "send2trash", lambda _path: None)
+    service = CleanupService(FakeReportService(), safe_roots=[tmp_path], protected_roots=[])
+
+    result = service.cleanup_safe_items("scan_noop_backend", [make_item(safe_file)])
+
+    assert safe_file.exists()
+    assert result.files_deleted == 0
+    assert result.files_skipped == 1
+    assert result.deleted_item_ids == []
+    assert "without moving this item" in result.errors[0]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Recycle Bin backend only")
+def test_windows_uses_modern_recycle_bin_backend() -> None:
+    service = CleanupService(FakeReportService())
+
+    assert service.recycle_bin_backend_name() == "Windows IFileOperation"

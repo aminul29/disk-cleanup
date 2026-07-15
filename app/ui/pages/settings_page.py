@@ -29,6 +29,7 @@ from app.services.license_service import MockLicenseService
 from app.services.settings_service import SettingsService
 from app.ui.styles import apply_app_style
 from app.ui.icons import icon
+from app.ui.pricing_dialog import PricingDialog
 from app.ui.widgets import Card, page_header
 
 
@@ -141,7 +142,7 @@ class SettingsPage(QWidget):
         self.reset_settings_button.setIcon(icon("rotate-ccw", "#4f7fe8"))
         self.show_welcome_button.setIcon(icon("book-open", "#4f7fe8"))
         self.privacy_policy_button.setIcon(icon("shield", "#4f7fe8"))
-        self.support_button.setIcon(icon("circle-help", "#4f7fe8"))
+        self.support_button.setIcon(icon("life-buoy", "#4f7fe8"))
         self.upgrade_button.setIcon(icon("sparkles", "#4f7fe8"))
         self.save_ai_button.setIcon(icon("save", "#ffffff"))
         self.test_ai_button.setIcon(icon("plug-zap", "#4f7fe8"))
@@ -176,7 +177,7 @@ class SettingsPage(QWidget):
         self.support_button.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl(SUPPORT_URL))
         )
-        self.upgrade_button.clicked.connect(self.show_pricing_placeholder)
+        self.upgrade_button.clicked.connect(self.show_pricing_dialog)
         self.save_ai_button.clicked.connect(self.save_ai_settings)
         self.test_ai_button.clicked.connect(self.test_ai_settings)
         self.on_ai_provider_changed(self.ai_provider_combo.currentText())
@@ -602,13 +603,8 @@ class SettingsPage(QWidget):
         self.test_ai_button.setEnabled(True)
         self.test_ai_button.setText("Test OpenRouter")
 
-    def show_pricing_placeholder(self) -> None:
-        QMessageBox.information(
-            self,
-            "Planned Pro Features",
-            "Scheduled cleanup\nAdvanced duplicate actions\nExpanded AI tools\n\n"
-            + self.license_service.pricing_message(),
-        )
+    def show_pricing_dialog(self) -> None:
+        PricingDialog(self.license_service, self).exec()
 
     def has_active_operation(self) -> bool:
         return self.ai_thread is not None

@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
         self.dashboard_page.start_scan_button.clicked.connect(lambda: self.nav.setCurrentRow(1))
         self.dashboard_page.start_scan_button.clicked.connect(self.scan_page.start_scan)
         self.dashboard_page.view_results_button.clicked.connect(lambda: self.nav.setCurrentRow(2))
-        self.dashboard_page.clean_safe_button.clicked.connect(lambda: self.nav.setCurrentRow(2))
+        self.dashboard_page.clean_safe_button.clicked.connect(self.open_cleanup_preview)
         self.dashboard_page.view_latest_report_button.clicked.connect(lambda: self.nav.setCurrentRow(5))
         self.scan_page.scan_completed.connect(self.on_scan_completed)
         self.results_page.cleanup_completed.connect(self.on_cleanup_completed)
@@ -181,6 +181,10 @@ class MainWindow(QMainWindow):
         self.scan_page.on_mode_changed("Deep")
         self.dashboard_page.set_scan_mode("Deep")
         self.scan_page.start_scan()
+
+    def open_cleanup_preview(self) -> None:
+        self.nav.setCurrentRow(2)
+        self.results_page.preview_cleanup()
 
     def _has_active_operations(self) -> bool:
         return any(
