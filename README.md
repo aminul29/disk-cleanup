@@ -88,6 +88,13 @@ Run the Store preflight independently at any time:
 
 Certification test instructions and capability justifications are ready to paste from [store-certification-notes.md](app/docs/store-certification-notes.md).
 
+The repository also includes two Windows GitHub Actions workflows:
+
+- `Windows CI` runs the complete test, PyInstaller build, and Store preflight on every push and pull request.
+- `Build Microsoft Store MSIX` is a manual workflow that accepts the exact Partner Center identity values and creates a versioned submission bundle with the unsigned MSIX, SHA-256 checksum, listing copy, certification notes, and screenshots.
+
+Run the MSIX workflow from the repository's **Actions** tab after reserving the app name in Partner Center. Its generated package is intended for Partner Center upload, where Microsoft applies the Store signature.
+
 Generate privacy-safe Store screenshots from the production UI using isolated demo data:
 
 ```powershell

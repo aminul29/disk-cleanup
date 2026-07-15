@@ -28,6 +28,14 @@ Before packaging, run the Store preflight directly when needed:
 
 `scripts\build.ps1` and `scripts\build-msix.ps1` also run this validation. It checks manifest capabilities and placeholders, asset and screenshot dimensions, listing/privacy disclosures, version alignment, and the packaged files for mutable local data or embedded secrets.
 
+## GitHub Store Build
+
+The manual **Build Microsoft Store MSIX** workflow in `.github/workflows/build-store-msix.yml` runs on a pinned Windows 2025 runner with Python 3.12 and the Windows SDK. Enter the exact Partner Center Identity Name, Publisher, Publisher Display Name, and next four-part version when dispatching it.
+
+The workflow builds from a clean checkout, runs the complete release checks, invokes `MakeAppx.exe`, records a SHA-256 checksum, and uploads one Store submission bundle. The MSIX is deliberately unsigned because Partner Center applies the Microsoft Store signature after certification.
+
+The regular **Windows CI** workflow builds the portable PyInstaller app on pushes and pull requests so packaging regressions are caught before a Store build.
+
 ## Store Screenshots
 
 Generate listing screenshots without exposing local device data:

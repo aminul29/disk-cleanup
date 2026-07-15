@@ -14,6 +14,8 @@
 - [ ] Run `scripts\build.ps1` and smoke-test `dist\DiskWiseAI\DiskWiseAI.exe`.
 - [ ] Run `.\.venv\Scripts\python.exe .\scripts\validate-store-readiness.py --require-build` successfully.
 - [ ] Build MSIX with `scripts\build-msix.ps1` and a four-part version higher than the previous submission.
+- [ ] Alternatively, run **Build Microsoft Store MSIX** in GitHub Actions with the exact Partner Center values and download its submission bundle.
+- [ ] Verify the downloaded MSIX against `SHA256SUMS.txt` before uploading it to Partner Center.
 - [ ] Install the package on a clean Windows user account and test launch/uninstall.
 - [ ] Optionally run `scripts\run-wack.ps1` when the Windows App Certification Kit is available; Partner Center certification is authoritative.
 - [ ] Confirm no API key or user database is present in the staged package.
