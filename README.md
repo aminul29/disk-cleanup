@@ -80,6 +80,14 @@ The Store signs the uploaded MSIX. Validate it before submission:
 
 Submission copy, privacy details, and release gates are in [store-listing.md](app/docs/store-listing.md) and [store-submission-checklist.md](app/docs/store-submission-checklist.md).
 
+Run the Store preflight independently at any time:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\validate-store-readiness.py --require-build
+```
+
+Certification test instructions and capability justifications are ready to paste from [store-certification-notes.md](app/docs/store-certification-notes.md).
+
 Generate privacy-safe Store screenshots from the production UI using isolated demo data:
 
 ```powershell

@@ -116,6 +116,7 @@ class SettingsPage(QWidget):
         self.remove_exclusion_button = QPushButton("Remove Selected")
         self.clear_scans_button = QPushButton("Clear Scan History")
         self.clear_reports_button = QPushButton("Clear Cleanup Reports")
+        self.clear_logs_button = QPushButton("Clear Diagnostic Logs")
         self.clear_history_button = QPushButton("Clear All History")
         self.reset_settings_button = QPushButton("Reset Settings")
         self.show_welcome_button = QPushButton("Show Welcome")
@@ -127,6 +128,7 @@ class SettingsPage(QWidget):
         self.remove_exclusion_button.setProperty("class", "Secondary")
         self.clear_scans_button.setProperty("class", "Secondary")
         self.clear_reports_button.setProperty("class", "Secondary")
+        self.clear_logs_button.setProperty("class", "Secondary")
         self.clear_history_button.setProperty("class", "Danger")
         self.reset_settings_button.setProperty("class", "Secondary")
         self.show_welcome_button.setProperty("class", "Secondary")
@@ -138,6 +140,7 @@ class SettingsPage(QWidget):
         self.remove_exclusion_button.setIcon(icon("folder-minus", "#4f7fe8"))
         self.clear_scans_button.setIcon(icon("history", "#4f7fe8"))
         self.clear_reports_button.setIcon(icon("file-x", "#4f7fe8"))
+        self.clear_logs_button.setIcon(icon("file-text", "#4f7fe8"))
         self.clear_history_button.setIcon(icon("trash-2", "#ffffff"))
         self.reset_settings_button.setIcon(icon("rotate-ccw", "#4f7fe8"))
         self.show_welcome_button.setIcon(icon("book-open", "#4f7fe8"))
@@ -152,6 +155,7 @@ class SettingsPage(QWidget):
             self.remove_exclusion_button,
             self.clear_scans_button,
             self.clear_reports_button,
+            self.clear_logs_button,
             self.clear_history_button,
             self.reset_settings_button,
             self.show_welcome_button,
@@ -168,6 +172,7 @@ class SettingsPage(QWidget):
         self.remove_exclusion_button.clicked.connect(self.remove_exclusion)
         self.clear_scans_button.clicked.connect(self.clear_scan_history)
         self.clear_reports_button.clicked.connect(self.clear_cleanup_reports)
+        self.clear_logs_button.clicked.connect(self.clear_diagnostic_logs)
         self.clear_history_button.clicked.connect(self.clear_history)
         self.reset_settings_button.clicked.connect(self.reset_settings)
         self.show_welcome_button.clicked.connect(self.onboarding_requested.emit)
@@ -358,7 +363,7 @@ class SettingsPage(QWidget):
         layout.addWidget(self._section_title("Local Data"))
         layout.addWidget(
             self._section_description(
-                "Scan summaries and cleanup reports are stored in local SQLite only."
+                "Scan summaries, cleanup reports, and rotating diagnostics stay on this device."
             )
         )
         layout.addStretch()
@@ -370,6 +375,7 @@ class SettingsPage(QWidget):
         layout.addLayout(first_row)
 
         second_row = QHBoxLayout()
+        second_row.addWidget(self.clear_logs_button)
         second_row.addWidget(self.clear_history_button)
         second_row.addStretch()
         layout.addLayout(second_row)
@@ -514,6 +520,20 @@ class SettingsPage(QWidget):
             self.settings_service.clear_cleanup_reports()
             self.history_changed.emit()
             QMessageBox.information(self, "Cleanup Reports Cleared", "Cleanup reports have been cleared.")
+
+    def clear_diagnostic_logs(self) -> None:
+        confirmed = QMessageBox.question(
+            self,
+            "Clear Diagnostic Logs",
+            "Clear rotating diagnostic logs stored on this device? Scan and cleanup history will be kept.",
+        )
+        if confirmed == QMessageBox.StandardButton.Yes:
+            try:
+                self.settings_service.clear_diagnostic_logs()
+            except OSError as exc:
+                QMessageBox.warning(self, "Could Not Clear Logs", str(exc))
+                return
+            QMessageBox.information(self, "Diagnostic Logs Cleared", "Diagnostic logs have been cleared.")
 
     def clear_history(self) -> None:
         confirmed = QMessageBox.question(

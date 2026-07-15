@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
@@ -25,6 +26,30 @@ def configure_logging() -> None:
         logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
     root_logger.addHandler(file_handler)
+
+
+def clear_diagnostic_logs() -> None:
+    root_logger = logging.getLogger()
+    matching_handlers = [
+        handler
+        for handler in root_logger.handlers
+        if isinstance(handler, RotatingFileHandler)
+        and Path(handler.baseFilename).resolve() == LOG_PATH.resolve()
+    ]
+
+    for handler in matching_handlers:
+        handler.acquire()
+        try:
+            handler.flush()
+            if handler.stream is not None:
+                handler.stream.close()
+                handler.stream = None
+        finally:
+            handler.release()
+
+    for index in range(4):
+        path = LOG_PATH if index == 0 else Path(f"{LOG_PATH}.{index}")
+        path.unlink(missing_ok=True)
 
 
 class SingleInstanceGuard:

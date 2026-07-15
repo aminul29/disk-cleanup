@@ -12,10 +12,13 @@
 
 - [ ] Run `scripts\test.ps1` successfully.
 - [ ] Run `scripts\build.ps1` and smoke-test `dist\DiskWiseAI\DiskWiseAI.exe`.
+- [ ] Run `.\.venv\Scripts\python.exe .\scripts\validate-store-readiness.py --require-build` successfully.
 - [ ] Build MSIX with `scripts\build-msix.ps1` and a four-part version higher than the previous submission.
 - [ ] Install the package on a clean Windows user account and test launch/uninstall.
-- [ ] Run `scripts\run-wack.ps1` and resolve all failures.
+- [ ] Optionally run `scripts\run-wack.ps1` when the Windows App Certification Kit is available; Partner Center certification is authoritative.
 - [ ] Confirm no API key or user database is present in the staged package.
+- [ ] Paste the test flow and capability reasons from `store-certification-notes.md` into Partner Center submission notes.
+- [ ] Confirm `internetClient` is declared only for optional OpenRouter requests and `runFullTrust` only for the packaged Win32 desktop process.
 
 ## Core Workflow QA
 
@@ -38,6 +41,7 @@
 - [ ] Captured OpenRouter payload contains no file names, paths, contents, scan IDs, or duplicate hashes.
 - [ ] API key is encrypted at rest with DPAPI and is absent from logs/build output.
 - [ ] The in-app AI reporting link opens without attaching scan data.
+- [ ] Clear Diagnostic Logs removes current and rotated logs without clearing scan or cleanup history.
 
 ## Listing Assets
 

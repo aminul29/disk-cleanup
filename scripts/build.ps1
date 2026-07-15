@@ -32,9 +32,9 @@ try {
     Assert-NativeSuccess "Dependency installation"
 
     Write-Host "Running release checks..."
-    & $Python -m compileall -q app tests scripts\generate-store-assets.py
+    & $Python -m compileall -q app tests scripts
     Assert-NativeSuccess "Python compilation"
-    & $Python -m ruff check app tests scripts\generate-store-assets.py
+    & $Python -m ruff check app tests scripts
     Assert-NativeSuccess "Ruff"
     & $Python -m pytest -q
     Assert-NativeSuccess "Tests"
@@ -55,6 +55,10 @@ try {
         --add-data "app\assets;app\assets" `
         app\main.py
     Assert-NativeSuccess "PyInstaller"
+
+    Write-Host "Validating Microsoft Store release inputs..."
+    & $Python (Join-Path $PSScriptRoot "validate-store-readiness.py") --require-build
+    Assert-NativeSuccess "Microsoft Store readiness validation"
 
     Write-Host "Build complete: dist\DiskWiseAI\DiskWiseAI.exe"
 } finally {

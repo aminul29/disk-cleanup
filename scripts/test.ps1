@@ -16,12 +16,14 @@ if (-not (Test-Path $Python)) {
 
 try {
     Set-Location $Root
-    & $Python -m compileall -q app tests scripts\generate-store-assets.py
+    & $Python -m compileall -q app tests scripts
     Assert-NativeSuccess "Python compilation"
-    & $Python -m ruff check app tests scripts\generate-store-assets.py
+    & $Python -m ruff check app tests scripts
     Assert-NativeSuccess "Ruff"
     & $Python -m pytest -q
     Assert-NativeSuccess "Tests"
+    & $Python scripts\validate-store-readiness.py
+    Assert-NativeSuccess "Microsoft Store readiness validation"
 } finally {
     Set-Location $OriginalLocation
 }

@@ -14,13 +14,13 @@ DiskWise does not upload file names, file paths, or file contents. Cleanup is pe
 
 DiskWise stores the following locally:
 
-- Aggregate scan history and scan errors.
-- Cleanup reports and cleanup errors.
+- Aggregate scan history and scan errors. Windows error details may include a local file name or path when the operating system reports it.
+- Cleanup reports and cleanup errors. These local error details may also include a file name or path needed to explain why an item was skipped.
 - Theme, privacy, AI provider, model, exclusion, and onboarding settings.
 - An optional OpenRouter API key encrypted with Windows Data Protection API (DPAPI) for your Windows account.
 - Rotating diagnostic logs needed to troubleshoot the app. Cleanup action logs use generated item identifiers instead of file paths.
 
-You can clear scan history and cleanup reports from Settings. You can remove an API key by clearing it and saving AI settings.
+You can clear scan history and cleanup reports from Settings. Use **Clear Diagnostic Logs** there to remove rotating logs. You can remove an API key by clearing it and saving AI settings.
 
 ## Optional OpenRouter AI
 

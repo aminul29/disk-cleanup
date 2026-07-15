@@ -45,6 +45,7 @@
 - Duplicate exclusions are blocked.
 - Scan history can be cleared separately.
 - Cleanup reports can be cleared separately.
+- Diagnostic logs can be cleared without deleting scan or cleanup history.
 - Reset Settings restores default preferences.
 - OpenRouter keys migrate from plaintext and are encrypted with Windows DPAPI.
 - The welcome tour can be reopened.

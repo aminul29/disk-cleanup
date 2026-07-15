@@ -4,6 +4,7 @@ from pathlib import Path
 import logging
 
 from app.database.local_database import LocalDatabase
+from app.runtime import clear_diagnostic_logs
 from app.utils.secret_store import protect_secret, unprotect_secret
 
 
@@ -114,6 +115,9 @@ class SettingsService:
 
     def clear_cleanup_reports(self) -> None:
         self.database.clear_cleanup_reports()
+
+    def clear_diagnostic_logs(self) -> None:
+        clear_diagnostic_logs()
 
     def reset_settings(self) -> None:
         self.database.reset_settings()

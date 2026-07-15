@@ -16,7 +16,7 @@ Run a Quick Scan for supported temporary and cache locations, or use Deep Scan t
 
 Files moved to the Recycle Bin remain recoverable, and Windows reclaims their disk space after the Recycle Bin is emptied.
 
-Scan history and cleanup reports stay in local SQLite. Optional OpenRouter advice uses aggregate category totals only and never receives file names, paths, contents, scan identifiers, or duplicate hashes. Strict local mode blocks all external AI requests.
+Scan history and cleanup reports stay in local SQLite. Optional live generative AI advice through OpenRouter uses aggregate category totals only and never receives file names, paths, contents, scan identifiers, or duplicate hashes. Strict local mode blocks all external AI requests, and the app provides an AI output reporting link.
 
 Key capabilities:
 
@@ -26,7 +26,7 @@ Key capabilities:
 - Conservative Safe, Review, and Protected classifications.
 - Large-file and duplicate review views.
 - Local reports, exclusions, light/dark themes, and clear-history controls.
-- Optional aggregate-only AI cleanup advice.
+- Optional aggregate-only live generative AI cleanup advice.
 
 ## Search Terms
 
@@ -48,14 +48,19 @@ Utilities & tools
 - Privacy: https://github.com/aminul29/disk-cleanup/blob/main/app/docs/privacy-policy.md
 - AI output reporting: https://github.com/aminul29/disk-cleanup/issues/new?labels=ai-feedback
 
+## What's New In This Version
+
+Initial release with local Quick and Deep scans, guarded Recycle Bin cleanup, large-file and duplicate review, local reports, exclusions, themes, and optional aggregate-only AI advice.
+
 ## Screenshot Plan
 
-Capture at least four 1366 x 768 or larger PNG screenshots from the release build:
+The generated 1440 x 810 PNG listing set contains:
 
 1. Dashboard after a completed scan.
-2. Smart Scan showing Quick/Deep modes and progress stages.
-3. Results showing risk groups and cleanup preview.
-4. Reports showing cleanup history and recovered space.
-5. Settings showing Strict local mode and aggregate-only AI disclosure.
+2. Results showing Safe, Review, and Protected groups.
+3. Optional AI advice with the aggregate-only safety disclosure.
+4. Large Files review.
+5. Duplicate candidates review.
+6. Reports showing scan and cleanup history.
 
 Do not include an API key, user name, private path, or identifiable file name in screenshots.

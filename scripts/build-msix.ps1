@@ -17,6 +17,14 @@ $ErrorActionPreference = "Stop"
 if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
     throw "Version must contain four numeric parts, for example 0.1.0.0."
 }
+if (($Version.Split('.') | Where-Object { [int]$_ -gt 65535 }).Count) {
+    throw "Each MSIX version part must be between 0 and 65535."
+}
+foreach ($Value in @($IdentityName, $Publisher, $PublisherDisplayName)) {
+    if ([String]::IsNullOrWhiteSpace($Value) -or $Value -match '(?i)PARTNER_CENTER|^YOUR_|REPLACE|__') {
+        throw "Use the exact package identity values assigned in Partner Center; placeholders are not allowed."
+    }
+}
 
 $Root = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $StageRoot = [IO.Path]::GetFullPath((Join-Path $Root "build\msix\root"))
@@ -36,6 +44,13 @@ if (-not (Test-Path (Join-Path $DistApp "DiskWiseAI.exe"))) {
 
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 & $Python (Join-Path $PSScriptRoot "generate-store-assets.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Store asset generation failed with exit code $LASTEXITCODE."
+}
+& $Python (Join-Path $PSScriptRoot "validate-store-readiness.py") --require-build
+if ($LASTEXITCODE -ne 0) {
+    throw "Microsoft Store readiness validation failed with exit code $LASTEXITCODE."
+}
 
 $MakeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
     -Filter "makeappx.exe" -Recurse -ErrorAction SilentlyContinue |
@@ -66,6 +81,14 @@ $Manifest = $Manifest.Replace(
     [Security.SecurityElement]::Escape($PublisherDisplayName)
 )
 $Manifest = $Manifest.Replace("__VERSION__", $Version)
+if ($Manifest -match '__[A-Z0-9_]+__') {
+    throw "The rendered AppxManifest.xml still contains an unresolved placeholder."
+}
+try {
+    [xml]$Manifest | Out-Null
+} catch {
+    throw "The rendered AppxManifest.xml is invalid: $($_.Exception.Message)"
+}
 Set-Content -LiteralPath (Join-Path $StageRoot "AppxManifest.xml") -Value $Manifest -Encoding utf8
 
 & $MakeAppx.FullName pack /d $StageRoot /p $OutputPackage /o
