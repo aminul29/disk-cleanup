@@ -46,6 +46,8 @@ Review files are not deleted by DiskWise.
 
 Protected files are never selected and never cleaned.
 
+Password-manager vault exports, accounting/financial file formats, tax-return files, and private-key files remain Protected even if they are copied into a temp or cache folder. Generic `.db` files are not blanket-blocked because Windows thumbnail caches use that extension; protected roots and specific sensitive formats still take precedence.
+
 ## Deletion Rules
 
 1. Show a preview first.

@@ -112,6 +112,65 @@ def test_protected_root_wins_even_when_nested_in_safe_root(tmp_path: Path) -> No
     )
 
 
+@pytest.mark.parametrize(
+    "file_name",
+    [
+        "passwords.kdbx",
+        "vault.1pux",
+        "company.qbw",
+        "backup.qbb",
+        "transactions.ofx",
+        "return.tax2025",
+        "private-key.pem",
+        "signing.key",
+    ],
+)
+def test_sensitive_file_types_are_protected_inside_safe_roots(
+    tmp_path: Path,
+    file_name: str,
+) -> None:
+    safe_root = tmp_path / "cache"
+    safe_root.mkdir()
+    file_path = safe_root / file_name
+    file_path.write_text("sensitive", encoding="utf-8")
+
+    assert not is_safe_cleanup_path(
+        file_path,
+        safe_roots=[safe_root],
+        protected_roots=[],
+    )
+
+
+@pytest.mark.parametrize("folder_name", ["Accounting", "QuickBooks", "Bitwarden"])
+def test_sensitive_folders_are_protected_inside_safe_roots(
+    tmp_path: Path,
+    folder_name: str,
+) -> None:
+    safe_root = tmp_path / "cache"
+    file_path = safe_root / folder_name / "data.tmp"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text("sensitive", encoding="utf-8")
+
+    assert not is_safe_cleanup_path(
+        file_path,
+        safe_roots=[safe_root],
+        protected_roots=[],
+    )
+
+
+def test_thumbnail_database_extension_is_not_blanket_protected(tmp_path: Path) -> None:
+    safe_root = tmp_path / "Explorer"
+    safe_root.mkdir()
+    thumbnail_cache = safe_root / "thumbcache_256.db"
+    thumbnail_cache.write_bytes(b"thumbnail cache")
+
+    assert is_safe_cleanup_path(
+        thumbnail_cache,
+        safe_roots=[safe_root],
+        protected_roots=[],
+    )
+
+
 def test_cleanup_refuses_unselected_items(monkeypatch, tmp_path: Path) -> None:
     safe_file = tmp_path / "not-selected.tmp"
     safe_file.write_text("keep me")

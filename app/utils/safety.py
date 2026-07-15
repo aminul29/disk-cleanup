@@ -21,6 +21,13 @@ PROTECTED_FOLDER_NAMES = {
     "keepass",
     "keepassxc",
     "passwords",
+    "accounting",
+    "bookkeeping",
+    "finance",
+    "financial",
+    "quickbooks",
+    "quicken",
+    "taxes",
     "source",
     "src",
     "repos",
@@ -28,6 +35,26 @@ PROTECTED_FOLDER_NAMES = {
     "node_modules",
     ".venv",
     "venv",
+}
+
+PROTECTED_FILE_EXTENSIONS = {
+    ".1pif",
+    ".1pux",
+    ".enpassbackup",
+    ".iif",
+    ".kdb",
+    ".kdbx",
+    ".key",
+    ".ofx",
+    ".p12",
+    ".pem",
+    ".pfx",
+    ".psafe3",
+    ".qbb",
+    ".qbm",
+    ".qbo",
+    ".qbw",
+    ".qfx",
 }
 
 
@@ -63,7 +90,14 @@ def is_protected_path(path: Path, protected_roots: list[Path] | None = None) -> 
         return True
 
     path_parts = {part.lower() for part in path.parts}
-    return any(folder_name in path_parts for folder_name in PROTECTED_FOLDER_NAMES)
+    if any(folder_name in path_parts for folder_name in PROTECTED_FOLDER_NAMES):
+        return True
+
+    suffix = path.suffix.lower()
+    is_tax_file = suffix == ".tax" or (
+        suffix.startswith(".tax") and suffix.removeprefix(".tax").isdigit()
+    )
+    return suffix in PROTECTED_FILE_EXTENSIONS or is_tax_file
 
 
 def is_safe_cleanup_path(

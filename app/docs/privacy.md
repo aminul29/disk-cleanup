@@ -10,6 +10,6 @@ DiskWise AI is local-first by design.
 - Strict local mode blocks all OpenRouter requests.
 - OpenRouter API keys are encrypted with Windows DPAPI for the current Windows account or read from `OPENROUTER_API_KEY`.
 - DiskWise includes no analytics, advertising, telemetry, payment, or developer-owned API key.
-- Users can clear scan history and cleanup reports independently from Settings.
+- Users can clear scan history, cleanup reports, and rotating diagnostic logs independently from Settings.
 
 The customer-facing policy is [privacy-policy.md](privacy-policy.md).
