@@ -15,4 +15,4 @@ class MockLicenseService:
         return feature_key in {"quick_scan", "safe_cleanup", "local_reports"}
 
     def pricing_message(self) -> str:
-        return "Payment integration will be added in a later milestone."
+        return "Purchases are not available in this release. No payment information is collected."

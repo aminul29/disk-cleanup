@@ -4,7 +4,12 @@ import json
 from datetime import datetime
 
 from app.models import CleanupCategory, CleanupItem, RiskLevel, ScanResult
-from app.services.ai_advisor_service import build_privacy_safe_scan_request, parse_ai_recommendation
+from app.services.ai_advisor_service import (
+    AiAdvisorService,
+    build_privacy_safe_scan_request,
+    parse_ai_recommendation,
+    sample_scan_result,
+)
 
 
 def test_ai_request_uses_aggregate_data_without_file_names_or_paths() -> None:
@@ -55,6 +60,7 @@ def test_ai_request_uses_aggregate_data_without_file_names_or_paths() -> None:
 
     assert "private-name.tmp" not in payload
     assert "C:/Users/USER/Documents" not in payload
+    assert "scan_test" not in payload
     assert "User Temporary Files" in payload
     assert request.safe_bytes == 100
 
@@ -75,3 +81,29 @@ def test_parse_ai_recommendation_accepts_json_content() -> None:
     assert recommendation.safety_notes == ["Do not auto-delete review files"]
     assert recommendation.review_priorities == ["Downloads"]
     assert recommendation.confidence == "High"
+
+
+def test_strict_local_mode_blocks_openrouter() -> None:
+    class StrictLocalSettings:
+        def get_ai_provider(self) -> str:
+            return "OpenRouter"
+
+        def privacy_mode_enabled(self) -> bool:
+            return True
+
+    recommendation = AiAdvisorService(StrictLocalSettings()).test_connection()  # type: ignore[arg-type]
+
+    assert "no data was sent" in recommendation.summary
+    assert recommendation.confidence == "High"
+
+
+def test_disabled_ai_does_not_call_provider() -> None:
+    class DisabledSettings:
+        def ai_summary_enabled(self) -> bool:
+            return False
+
+    recommendation = AiAdvisorService(DisabledSettings()).generate_recommendations(  # type: ignore[arg-type]
+        sample_scan_result()
+    )
+
+    assert recommendation.summary == "AI advice is disabled in Settings."

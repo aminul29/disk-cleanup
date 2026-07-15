@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 
 from app.models import CleanupItem, RiskLevel
 from app.services import cleanup_service as cleanup_module
@@ -86,6 +87,8 @@ def test_cleanup_deletes_only_safe_items_inside_safe_roots(monkeypatch, tmp_path
 
     assert result.files_deleted == 1
     assert result.files_skipped == 2
+    assert result.deleted_item_ids == [safe_file.name]
+    assert set(result.skipped_item_ids) == {unsafe_file.name, review_file.name}
     assert not safe_file.exists()
     assert unsafe_file.exists()
     assert review_file.exists()
@@ -104,3 +107,87 @@ def test_protected_root_wins_even_when_nested_in_safe_root(tmp_path: Path) -> No
         safe_roots=[safe_root],
         protected_roots=[protected_root],
     )
+
+
+def test_cleanup_refuses_unselected_items(monkeypatch, tmp_path: Path) -> None:
+    safe_file = tmp_path / "not-selected.tmp"
+    safe_file.write_text("keep me")
+    item = make_item(safe_file)
+    item.is_selected = False
+
+    trash_calls: list[str] = []
+    monkeypatch.setattr(cleanup_module, "send2trash", trash_calls.append)
+    service = CleanupService(FakeReportService(), safe_roots=[tmp_path], protected_roots=[])
+
+    result = service.cleanup_safe_items("scan_unselected", [item])
+
+    assert safe_file.exists()
+    assert trash_calls == []
+    assert result.files_deleted == 0
+    assert result.skipped_item_ids == [item.id]
+
+
+def test_cleanup_cancellation_leaves_unprocessed_files(monkeypatch, tmp_path: Path) -> None:
+    first = tmp_path / "first.tmp"
+    second = tmp_path / "second.tmp"
+    first.write_text("first")
+    second.write_text("second")
+    cancel_event = Event()
+    cancel_event.set()
+
+    trash_calls: list[str] = []
+    monkeypatch.setattr(cleanup_module, "send2trash", trash_calls.append)
+    service = CleanupService(FakeReportService(), safe_roots=[tmp_path], protected_roots=[])
+
+    result = service.cleanup_safe_items(
+        "scan_canceled",
+        [make_item(first), make_item(second)],
+        cancel_event=cancel_event,
+    )
+
+    assert result.canceled is True
+    assert result.files_deleted == 0
+    assert result.files_skipped == 2
+    assert set(result.skipped_item_ids) == {first.name, second.name}
+    assert first.exists() and second.exists()
+    assert trash_calls == []
+
+
+def test_cleanup_never_falls_back_to_permanent_deletion(monkeypatch, tmp_path: Path) -> None:
+    safe_file = tmp_path / "recycle-only.tmp"
+    safe_file.write_text("keep if recycle bin is unavailable")
+    monkeypatch.setattr(cleanup_module, "send2trash", None)
+    service = CleanupService(FakeReportService(), safe_roots=[tmp_path], protected_roots=[])
+
+    result = service.cleanup_safe_items("scan_no_recycle_bin", [make_item(safe_file)])
+
+    assert safe_file.exists()
+    assert result.files_deleted == 0
+    assert result.files_skipped == 1
+    assert "Recycle Bin support is unavailable" in result.errors[0]
+
+
+def test_cleanup_reports_progress_and_actual_recovered_size(monkeypatch, tmp_path: Path) -> None:
+    safe_file = tmp_path / "progress.tmp"
+    safe_file.write_bytes(b"actual file bytes")
+    item = make_item(safe_file)
+    item.size_bytes = 1
+    progress: list[tuple[int, int, str]] = []
+
+    def fake_send2trash(path: str) -> None:
+        Path(path).unlink()
+
+    monkeypatch.setattr(cleanup_module, "send2trash", fake_send2trash)
+    service = CleanupService(FakeReportService(), safe_roots=[tmp_path], protected_roots=[])
+
+    result = service.cleanup_safe_items(
+        "scan_progress",
+        [item],
+        progress_callback=lambda completed, total, name: progress.append(
+            (completed, total, name)
+        ),
+    )
+
+    assert result.bytes_recovered == len(b"actual file bytes")
+    assert result.deleted_item_ids == [item.id]
+    assert progress == [(1, 1, safe_file.name)]

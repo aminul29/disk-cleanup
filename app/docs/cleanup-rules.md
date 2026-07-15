@@ -4,7 +4,7 @@
 
 - Safe: user-level temp/cache files that can be selected by default.
 - Review: files that may be removable but need manual judgment.
-- Protected: files or folders that must never be cleaned by the MVP.
+- Protected: files or folders that must never be cleaned by DiskWise.
 
 ## Safe Categories
 
@@ -24,7 +24,7 @@ Safe files can be selected by default, but cleanup still requires preview and co
 - Large files in common user folders
 - Duplicate candidates
 
-Review files are not deleted by the MVP.
+Review files are not deleted by DiskWise.
 
 ## Protected Categories
 
@@ -53,6 +53,6 @@ Protected files are never selected and never cleaned.
 3. Validate that every item is Safe.
 4. Validate that every path is inside a known temp/cache root.
 5. Reject protected folders even when they are nested inside a safe root.
-6. Prefer recycle-bin deletion through `send2trash`.
+6. Require Recycle Bin deletion through `send2trash`; never fall back to permanent deletion.
 7. Log cleanup results to SQLite.
 8. Skip failures and continue safely.

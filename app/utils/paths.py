@@ -25,17 +25,31 @@ def temp_locations() -> list[Path]:
 def browser_cache_locations() -> list[Path]:
     local = local_app_data()
     roaming = roaming_app_data()
-    locations: list[Path] = [
-        local / "Google" / "Chrome" / "User Data" / "Default" / "Cache",
-        local / "Google" / "Chrome" / "User Data" / "Default" / "Cache" / "Cache_Data",
-        local / "Google" / "Chrome" / "User Data" / "Default" / "Code Cache",
-        local / "Microsoft" / "Edge" / "User Data" / "Default" / "Cache",
-        local / "Microsoft" / "Edge" / "User Data" / "Default" / "Cache" / "Cache_Data",
-        local / "Microsoft" / "Edge" / "User Data" / "Default" / "Code Cache",
-        local / "BraveSoftware" / "Brave-Browser" / "User Data" / "Default" / "Cache",
-        local / "BraveSoftware" / "Brave-Browser" / "User Data" / "Default" / "Code Cache",
-        local / "Opera Software" / "Opera Stable" / "Cache",
+    locations: list[Path] = []
+
+    chromium_roots = [
+        local / "Google" / "Chrome" / "User Data",
+        local / "Microsoft" / "Edge" / "User Data",
+        local / "BraveSoftware" / "Brave-Browser" / "User Data",
+        local / "Vivaldi" / "User Data",
     ]
+    for profile_root in chromium_roots:
+        for profile in _browser_profile_directories(profile_root):
+            locations.extend(
+                [
+                    profile / "Cache",
+                    profile / "Code Cache",
+                    profile / "GPUCache",
+                    profile / "Service Worker" / "CacheStorage",
+                ]
+            )
+
+    locations.extend(
+        [
+            local / "Opera Software" / "Opera Stable" / "Cache",
+            roaming / "Opera Software" / "Opera Stable" / "Cache",
+        ]
+    )
 
     for profile_root in [
         local / "Mozilla" / "Firefox" / "Profiles",
@@ -61,6 +75,27 @@ def browser_cache_locations() -> list[Path]:
                     ]
                 )
     return unique_existing_paths(locations)
+
+
+def _browser_profile_directories(profile_root: Path) -> list[Path]:
+    if not profile_root.exists():
+        return []
+    try:
+        candidates = list(profile_root.iterdir())
+    except OSError:
+        return []
+
+    profile_names = {"Default", "Guest Profile", "System Profile"}
+    profiles: list[Path] = []
+    for candidate in candidates:
+        if candidate.name not in profile_names and not candidate.name.startswith("Profile "):
+            continue
+        try:
+            if candidate.is_dir():
+                profiles.append(candidate)
+        except OSError:
+            continue
+    return profiles
 
 
 def thumbnail_cache_locations() -> list[Path]:

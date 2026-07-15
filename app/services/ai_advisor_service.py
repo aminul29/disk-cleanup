@@ -29,14 +29,32 @@ class AiAdvisorService:
         )
 
     def generate_recommendations(self, result: ScanResult) -> AiRecommendation:
+        if not self.settings_service.ai_summary_enabled():
+            return AiRecommendation(
+                summary="AI advice is disabled in Settings.",
+                recommended_next_steps=["Enable AI advice in Settings to analyze aggregate scan data."],
+                safety_notes=["Local scanning and cleanup remain available."],
+            )
+        return self._generate_for_provider(result)
+
+    def _generate_for_provider(self, result: ScanResult) -> AiRecommendation:
         provider = self.settings_service.get_ai_provider()
         if provider == "OpenRouter":
+            if self.settings_service.privacy_mode_enabled():
+                return AiRecommendation(
+                    summary="Strict local mode is enabled, so no data was sent to OpenRouter.",
+                    recommended_next_steps=[
+                        "Turn off Strict local mode in Settings to use privacy-safe aggregate AI advice."
+                    ],
+                    safety_notes=["Local scanning and deterministic cleanup rules remain available."],
+                    confidence="High",
+                )
             return self._generate_openrouter_recommendations(result)
         return self._generate_mock_recommendations(result)
 
     def test_connection(self) -> AiRecommendation:
         sample = sample_scan_result()
-        return self.generate_recommendations(sample)
+        return self._generate_for_provider(sample)
 
     def _generate_mock_recommendations(self, result: ScanResult) -> AiRecommendation:
         request = build_privacy_safe_scan_request(result)
@@ -112,7 +130,7 @@ class AiAdvisorService:
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://diskwise.local",
+                "HTTP-Referer": "https://github.com/aminul29/disk-cleanup",
                 "X-OpenRouter-Title": APP_NAME,
             },
             method="POST",
@@ -141,7 +159,6 @@ class AiAdvisorService:
 
 def build_privacy_safe_scan_request(result: ScanResult) -> AiScanSummaryRequest:
     return AiScanSummaryRequest(
-        scan_id=result.scan_id,
         total_files_scanned=result.total_files_scanned,
         total_bytes_scanned=result.total_bytes_scanned,
         safe_bytes=result.safe_bytes,

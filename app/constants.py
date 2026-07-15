@@ -8,7 +8,12 @@ APP_NAME = "DiskWise AI"
 APP_ID = "com.diskwise.diskwiseai"
 APP_AUTHOR = "DiskWise"
 APP_VERSION = "0.1.0"
-APP_DESCRIPTION = "Local-first Windows disk cleanup MVP."
+APP_DESCRIPTION = "Local-first Windows disk cleanup and storage review."
+SUPPORT_URL = "https://github.com/aminul29/disk-cleanup/issues"
+AI_REPORT_URL = "https://github.com/aminul29/disk-cleanup/issues/new?labels=ai-feedback"
+PRIVACY_POLICY_URL = (
+    "https://github.com/aminul29/disk-cleanup/blob/main/app/docs/privacy-policy.md"
+)
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 ASSETS_DIR = PACKAGE_ROOT / "assets"

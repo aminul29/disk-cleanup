@@ -38,7 +38,11 @@ class LocalDatabase:
                     bytes_recovered INTEGER NOT NULL,
                     categories_cleaned TEXT NOT NULL,
                     errors TEXT NOT NULL,
-                    summary TEXT NOT NULL
+                    summary TEXT NOT NULL,
+                    duration_seconds REAL NOT NULL DEFAULT 0,
+                    free_space_before_bytes INTEGER NOT NULL DEFAULT 0,
+                    free_space_after_bytes INTEGER NOT NULL DEFAULT 0,
+                    canceled INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS settings (
@@ -51,11 +55,22 @@ class LocalDatabase:
                 );
                 """
             )
+            self._ensure_columns(
+                connection,
+                "cleanup_reports",
+                {
+                    "duration_seconds": "REAL NOT NULL DEFAULT 0",
+                    "free_space_before_bytes": "INTEGER NOT NULL DEFAULT 0",
+                    "free_space_after_bytes": "INTEGER NOT NULL DEFAULT 0",
+                    "canceled": "INTEGER NOT NULL DEFAULT 0",
+                },
+            )
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path, timeout=10)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 10000")
         try:
             yield connection
             connection.commit()
@@ -75,7 +90,14 @@ class LocalDatabase:
             row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         if row is None:
             return default
-        return json.loads(row["value"])
+        try:
+            return json.loads(row["value"])
+        except (json.JSONDecodeError, TypeError):
+            return default
+
+    def delete_setting(self, key: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM settings WHERE key = ?", (key,))
 
     def clear_history(self) -> None:
         with self.connect() as connection:
@@ -93,3 +115,17 @@ class LocalDatabase:
     def reset_settings(self) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM settings")
+
+    def _ensure_columns(
+        self,
+        connection: sqlite3.Connection,
+        table: str,
+        columns: dict[str, str],
+    ) -> None:
+        existing = {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for name, definition in columns.items():
+            if name not in existing:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")

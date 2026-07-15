@@ -11,7 +11,7 @@ from typing import Callable
 
 import psutil
 
-from app.models import CleanupCategory, CleanupItem, DuplicateGroup, RiskLevel, ScanResult
+from app.models import CleanupCategory, CleanupItem, DuplicateGroup, RiskLevel, ScanMode, ScanResult
 from app.services.settings_service import SettingsService
 from app.utils.paths import (
     app_cache_locations,
@@ -51,11 +51,45 @@ class ScanService:
         progress_callback: ProgressCallback | None = None,
         cancel_event: Event | None = None,
     ) -> ScanResult:
+        return self.scan(ScanMode.QUICK, progress_callback, cancel_event)
+
+    def deep_scan(
+        self,
+        progress_callback: ProgressCallback | None = None,
+        cancel_event: Event | None = None,
+    ) -> ScanResult:
+        return self.scan(ScanMode.DEEP, progress_callback, cancel_event)
+
+    def scan(
+        self,
+        mode: ScanMode | str = ScanMode.QUICK,
+        progress_callback: ProgressCallback | None = None,
+        cancel_event: Event | None = None,
+    ) -> ScanResult:
+        scan_mode = mode if isinstance(mode, ScanMode) else ScanMode(mode)
         started = datetime.now()
         start_perf = time.perf_counter()
         scan_id = f"scan_{started.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
         errors: list[str] = []
         excluded = self.settings_service.get_excluded_folders()
+        stage_progress = (
+            {
+                "User temporary files": 20,
+                "Browser cache": 45,
+                "Thumbnail cache": 70,
+                "App cache": 95,
+            }
+            if scan_mode == ScanMode.QUICK
+            else {
+                "User temporary files": 10,
+                "Browser cache": 25,
+                "Thumbnail cache": 35,
+                "App cache": 45,
+                "Downloads review": 60,
+                "Large files": 80,
+                "Duplicate candidates": 95,
+            }
+        )
 
         temp_items = self._scan_safe_locations(
             category="user_temp",
@@ -66,6 +100,7 @@ class ScanService:
             progress_callback=progress_callback,
             cancel_event=cancel_event,
             errors=errors,
+            progress=stage_progress["User temporary files"],
         )
         browser_items = self._scan_safe_locations(
             category="browser_cache",
@@ -76,6 +111,7 @@ class ScanService:
             progress_callback=progress_callback,
             cancel_event=cancel_event,
             errors=errors,
+            progress=stage_progress["Browser cache"],
         )
         thumbnail_items = self._scan_safe_locations(
             category="thumbnail_cache",
@@ -87,6 +123,7 @@ class ScanService:
             cancel_event=cancel_event,
             errors=errors,
             allowed_extensions={".db"},
+            progress=stage_progress["Thumbnail cache"],
         )
         app_cache_items = self._scan_safe_locations(
             category="app_cache",
@@ -98,25 +135,44 @@ class ScanService:
             cancel_event=cancel_event,
             errors=errors,
             allowed_extensions={".tmp", ".temp", ".log", ".dmp", ".etl", ".cache"},
+            progress=stage_progress["App cache"],
         )
-        downloads_items = self._scan_old_downloads(
-            excluded=excluded,
-            progress_callback=progress_callback,
-            cancel_event=cancel_event,
-            errors=errors,
-        )
-        large_files = self._scan_large_files(
-            excluded=excluded,
-            progress_callback=progress_callback,
-            cancel_event=cancel_event,
-            errors=errors,
-        )
-        duplicate_groups = self._scan_duplicate_candidates(
-            excluded=excluded,
-            progress_callback=progress_callback,
-            cancel_event=cancel_event,
-            errors=errors,
-        )
+        downloads_items: list[CleanupItem] = []
+        large_files: list[CleanupItem] = []
+        duplicate_groups: list[DuplicateGroup] = []
+        if scan_mode == ScanMode.DEEP and not self._is_canceled(cancel_event):
+            downloads_items = self._scan_old_downloads(
+                excluded=excluded,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+                errors=errors,
+                progress=stage_progress["Downloads review"],
+            )
+        if scan_mode == ScanMode.DEEP and not self._is_canceled(cancel_event):
+            large_files = self._scan_large_files(
+                excluded=excluded,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+                errors=errors,
+                progress=stage_progress["Large files"],
+            )
+        if scan_mode == ScanMode.DEEP and not self._is_canceled(cancel_event):
+            duplicate_groups = self._scan_duplicate_candidates(
+                excluded=excluded,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+                errors=errors,
+                progress=stage_progress["Duplicate candidates"],
+            )
+
+        download_item_paths = {
+            self._path_key(Path(item.file_path)) for item in downloads_items
+        }
+        large_category_items = [
+            item
+            for item in large_files
+            if self._path_key(Path(item.file_path)) not in download_item_paths
+        ]
 
         categories = [
             self._build_category(
@@ -136,14 +192,6 @@ class ScanService:
                 True,
             ),
             self._build_category(
-                "old_downloads",
-                "Old Downloads",
-                "Large or old downloads that should be reviewed manually.",
-                RiskLevel.REVIEW,
-                downloads_items,
-                False,
-            ),
-            self._build_category(
                 "thumbnail_cache",
                 "Thumbnail Cache",
                 "Windows thumbnail cache files from the current user profile.",
@@ -159,25 +207,42 @@ class ScanService:
                 app_cache_items,
                 True,
             ),
-            self._build_category(
-                "large_files",
-                "Large Files",
-                "Files larger than 100 MB in common user folders.",
-                RiskLevel.REVIEW,
-                large_files,
-                False,
-            ),
+        ]
+        if scan_mode == ScanMode.DEEP:
+            categories.extend(
+                [
+                    self._build_category(
+                        "old_downloads",
+                        "Old Downloads",
+                        "Large or old downloads that should be reviewed manually.",
+                        RiskLevel.REVIEW,
+                        downloads_items,
+                        False,
+                    ),
+                    self._build_category(
+                        "large_files",
+                        "Large Files",
+                        "Files larger than 100 MB in common user folders.",
+                        RiskLevel.REVIEW,
+                        large_category_items,
+                        False,
+                    ),
+                ]
+            )
+        categories.append(
             CleanupCategory(
                 id="protected_personal_folders",
                 name="Protected Personal Folders",
-                description="Documents, Desktop, Pictures, Videos, Music, and source folders are protected.",
+                description=(
+                    "Documents, Desktop, Pictures, Videos, Music, and source folders are protected."
+                ),
                 risk_level=RiskLevel.PROTECTED,
                 total_bytes=0,
                 file_count=0,
                 items=[],
                 is_selected_by_default=False,
-            ),
-        ]
+            )
+        )
 
         total_files = sum(category.file_count for category in categories)
         total_bytes = sum(category.total_bytes for category in categories)
@@ -202,6 +267,8 @@ class ScanService:
             safe_bytes=safe_bytes,
             review_bytes=review_bytes,
             protected_bytes=protected_bytes,
+            mode=scan_mode,
+            canceled=self._is_canceled(cancel_event),
             categories=categories,
             large_files=large_files,
             duplicate_groups=duplicate_groups,
@@ -219,10 +286,13 @@ class ScanService:
         cancel_event: Event | None,
         errors: list[str],
         allowed_extensions: set[str] | None = None,
+        progress: int = 0,
     ) -> list[CleanupItem]:
         items: list[CleanupItem] = []
         total_bytes = 0
-        for location in locations:
+        seen_paths: set[str] = set()
+        self._emit_progress(progress_callback, progress_name, 0, 0, max(progress - 5, 0))
+        for location in self._minimal_roots(locations):
             for file_path in self._walk_files(location, excluded, cancel_event, errors):
                 if cancel_event and cancel_event.is_set():
                     break
@@ -231,6 +301,10 @@ class ScanService:
                     return items
                 if allowed_extensions and file_path.suffix.lower() not in allowed_extensions:
                     continue
+                path_key = self._path_key(file_path)
+                if path_key in seen_paths:
+                    continue
+                seen_paths.add(path_key)
                 if is_protected_path(file_path):
                     continue
                 item = self._create_item(file_path, category, RiskLevel.SAFE, reason, True)
@@ -239,7 +313,20 @@ class ScanService:
                 item.is_selected = True
                 items.append(item)
                 total_bytes += item.size_bytes
-                self._emit_progress(progress_callback, progress_name, len(items), total_bytes, 20)
+                self._emit_progress(
+                    progress_callback,
+                    progress_name,
+                    len(items),
+                    total_bytes,
+                    progress,
+                )
+        self._emit_progress(
+            progress_callback,
+            progress_name,
+            len(items),
+            total_bytes,
+            progress,
+        )
         return items
 
     def _scan_old_downloads(
@@ -248,6 +335,7 @@ class ScanService:
         progress_callback: ProgressCallback | None,
         cancel_event: Event | None,
         errors: list[str],
+        progress: int = 60,
     ) -> list[CleanupItem]:
         downloads = downloads_path()
         if not downloads.exists():
@@ -256,6 +344,7 @@ class ScanService:
         target_extensions = {".exe", ".msi", ".zip", ".rar", ".7z", ".iso"}
         items: list[CleanupItem] = []
         total_bytes = 0
+        self._emit_progress(progress_callback, "Downloads review", 0, 0, max(progress - 5, 0))
         for file_path in self._walk_files(downloads, excluded, cancel_event, errors):
             if len(items) >= MAX_REVIEW_FILES_PER_CATEGORY:
                 errors.append("Scan limit reached for Downloads review. Remaining files were skipped.")
@@ -280,8 +369,15 @@ class ScanService:
                     "Downloads review",
                     len(items),
                     total_bytes,
-                    45,
+                    progress,
                 )
+        self._emit_progress(
+            progress_callback,
+            "Downloads review",
+            len(items),
+            total_bytes,
+            progress,
+        )
         return items
 
     def _scan_large_files(
@@ -290,10 +386,12 @@ class ScanService:
         progress_callback: ProgressCallback | None,
         cancel_event: Event | None,
         errors: list[str],
+        progress: int = 80,
     ) -> list[CleanupItem]:
         items: list[CleanupItem] = []
         total_bytes = 0
         min_size = 100 * 1024 * 1024
+        self._emit_progress(progress_callback, "Large files", 0, 0, max(progress - 10, 0))
         for location in personal_scan_locations():
             for file_path in self._walk_files(location, excluded, cancel_event, errors):
                 if len(items) >= MAX_REVIEW_FILES_PER_CATEGORY:
@@ -314,8 +412,15 @@ class ScanService:
                         "Large files",
                         len(items),
                         total_bytes,
-                        70,
+                        progress,
                     )
+        self._emit_progress(
+            progress_callback,
+            "Large files",
+            len(items),
+            total_bytes,
+            progress,
+        )
         return items
 
     def _scan_duplicate_candidates(
@@ -324,12 +429,20 @@ class ScanService:
         progress_callback: ProgressCallback | None,
         cancel_event: Event | None,
         errors: list[str],
+        progress: int = 95,
     ) -> list[DuplicateGroup]:
         size_groups: dict[int, list[Path]] = defaultdict(list)
         min_size = 1024 * 1024
         downloads = downloads_path()
         if not downloads.exists():
             return []
+        self._emit_progress(
+            progress_callback,
+            "Duplicate candidates",
+            0,
+            0,
+            max(progress - 10, 0),
+        )
 
         for file_path in self._walk_files(downloads, excluded, cancel_event, errors):
             try:
@@ -385,8 +498,15 @@ class ScanService:
                     "Duplicate candidates",
                     len(groups),
                     sum(group.potential_savings_bytes for group in groups),
-                    90,
+                    progress,
                 )
+        self._emit_progress(
+            progress_callback,
+            "Duplicate candidates",
+            len(groups),
+            sum(group.potential_savings_bytes for group in groups),
+            progress,
+        )
         return groups
 
     def _walk_files(
@@ -396,7 +516,7 @@ class ScanService:
         cancel_event: Event | None,
         errors: list[str],
     ):
-        if any(is_under(root, excluded_path) or is_under(excluded_path, root) for excluded_path in excluded):
+        if any(is_under(root, excluded_path) for excluded_path in excluded):
             return
         try:
             iterator = root.rglob("*")
@@ -481,3 +601,20 @@ class ScanService:
     ) -> None:
         if progress_callback:
             progress_callback(category, file_count, bytes_found, progress)
+
+    def _is_canceled(self, cancel_event: Event | None) -> bool:
+        return cancel_event is not None and cancel_event.is_set()
+
+    def _path_key(self, path: Path) -> str:
+        try:
+            return str(path.resolve()).casefold()
+        except OSError:
+            return str(path.absolute()).casefold()
+
+    def _minimal_roots(self, locations: list[Path]) -> list[Path]:
+        roots: list[Path] = []
+        for location in sorted(locations, key=lambda path: len(path.parts)):
+            if any(is_under(location, root) for root in roots):
+                continue
+            roots.append(location)
+        return roots

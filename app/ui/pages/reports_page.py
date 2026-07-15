@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QGridLayout,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -19,7 +22,8 @@ from PySide6.QtWidgets import (
 
 from app.models import CleanupReport
 from app.services.report_service import ReportService
-from app.ui.widgets import Card, page_header
+from app.ui.icons import icon
+from app.ui.widgets import Card, StatCard, page_header
 from app.utils.formatting import format_bytes, format_datetime, format_duration
 
 
@@ -66,21 +70,41 @@ class ReportDetailDialog(QDialog):
 
     def _summary_text(self) -> str:
         return (
-            f"Recovered {format_bytes(self.report.bytes_recovered)} from "
-            f"{self.report.files_deleted} safe item(s). "
+            f"Moved {format_bytes(self.report.bytes_recovered)} from "
+            f"{self.report.files_deleted} Safe item(s) to the Recycle Bin. "
             f"Skipped {self.report.files_skipped} item(s)."
         )
 
     def _detail_text(self) -> str:
-        categories = ", ".join(self.report.categories_cleaned) or "None"
+        categories = (
+            ", ".join(
+                category.replace("_", " ").title()
+                for category in self.report.categories_cleaned
+            )
+            or "None"
+        )
         errors = "\n".join(f"- {error}" for error in self.report.errors) or "None"
+        before = (
+            format_bytes(self.report.free_space_before_bytes)
+            if self.report.free_space_before_bytes
+            else "Not recorded"
+        )
+        after = (
+            format_bytes(self.report.free_space_after_bytes)
+            if self.report.free_space_after_bytes
+            else "Not recorded"
+        )
         return (
             f"Report ID: {self.report.report_id}\n"
             f"Scan ID: {self.report.scan_id}\n"
             f"Created: {format_datetime(self.report.created_at)}\n"
-            f"Recovered: {format_bytes(self.report.bytes_recovered)}\n"
+            f"Moved to Recycle Bin: {format_bytes(self.report.bytes_recovered)}\n"
             f"Files cleaned: {self.report.files_deleted}\n"
             f"Files skipped: {self.report.files_skipped}\n"
+            f"Duration: {format_duration(self.report.duration_seconds)}\n"
+            f"Free space before: {before}\n"
+            f"Free space after: {after}\n"
+            f"Canceled: {'Yes' if self.report.canceled else 'No'}\n"
             f"Categories cleaned: {categories}\n\n"
             f"Errors:\n{errors}\n\n"
             "Safety note: DiskWise cleaned only selected Safe items. Review and Protected items are excluded."
@@ -93,28 +117,45 @@ class ReportsPage(QWidget):
         self.report_service = report_service
         self.reports: list[CleanupReport] = []
 
+        self.recovered_card = StatCard("Moved to Recycle Bin", "0 B", "Across local reports")
+        self.cleanups_card = StatCard("Cleanups", "0", "Completed cleanup sessions")
+        self.latest_card = StatCard("Latest Cleanup", "Not yet", "No cleanup report found")
+        self.latest_card.value_label.setProperty("class", "CardValueCompact")
+
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.setProperty("class", "Secondary")
         self.refresh_button.clicked.connect(self.refresh)
+        self.refresh_button.setIcon(icon("refresh-cw", "#4f7fe8"))
 
         self.detail_button = QPushButton("View Details")
+        self.detail_button.setEnabled(False)
         self.detail_button.clicked.connect(self.show_selected_report)
+        self.detail_button.setIcon(icon("file-search", "#ffffff"))
 
         self.cleanup_table = QTableWidget(0, 7)
         self.cleanup_table.setHorizontalHeaderLabels(
-            ["Created", "Recovered", "Files Cleaned", "Skipped", "Categories", "Errors", "Summary"]
+            [
+                "Created",
+                "Moved",
+                "Duration",
+                "Files Cleaned",
+                "Skipped",
+                "Categories",
+                "Issues",
+            ]
         )
-        self.cleanup_table.setColumnWidth(0, 160)
-        self.cleanup_table.setColumnWidth(4, 180)
-        self.cleanup_table.setColumnWidth(6, 360)
+        self._configure_table(self.cleanup_table)
         self.cleanup_table.itemDoubleClicked.connect(lambda _: self.show_selected_report())
+        self.cleanup_table.itemSelectionChanged.connect(self._update_detail_button)
 
-        self.scan_table = QTableWidget(0, 9)
+        self.scan_table = QTableWidget(0, 11)
         self.scan_table.setHorizontalHeaderLabels(
             [
                 "Started",
+                "Mode",
+                "Status",
                 "Duration",
-                "Files",
+                "Findings",
                 "Total Found",
                 "Safe",
                 "Review",
@@ -123,7 +164,7 @@ class ReportsPage(QWidget):
                 "Errors",
             ]
         )
-        self.scan_table.setColumnWidth(0, 160)
+        self._configure_table(self.scan_table)
 
         tabs = QTabWidget()
         tabs.addTab(self._table_card(self.cleanup_table), "Cleanup Reports")
@@ -140,8 +181,14 @@ class ReportsPage(QWidget):
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(14)
         layout.addWidget(page_header("Reports", "Review cleanup reports and previous scan sessions stored locally."))
+        summary_grid = QGridLayout()
+        summary_grid.setSpacing(12)
+        summary_grid.addWidget(self.recovered_card, 0, 0)
+        summary_grid.addWidget(self.cleanups_card, 0, 1)
+        summary_grid.addWidget(self.latest_card, 0, 2)
+        layout.addLayout(summary_grid)
         layout.addWidget(actions)
-        layout.addWidget(tabs)
+        layout.addWidget(tabs, 1)
         self.refresh()
 
     def _table_card(self, table: QTableWidget) -> Card:
@@ -162,16 +209,35 @@ class ReportsPage(QWidget):
             values = [
                 format_datetime(report.created_at),
                 format_bytes(report.bytes_recovered),
+                format_duration(report.duration_seconds),
                 str(report.files_deleted),
                 str(report.files_skipped),
-                ", ".join(report.categories_cleaned),
+                f"{len(report.categories_cleaned)} cleaned",
                 str(len(report.errors)),
-                report.summary,
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, report.report_id)
                 self.cleanup_table.setItem(row, column, item)
+        total_recovered = sum(report.bytes_recovered for report in self.reports)
+        self.recovered_card.set_values(
+            format_bytes(total_recovered),
+            "Across local reports",
+        )
+        self.cleanups_card.set_values(
+            f"{len(self.reports):,}",
+            "Completed cleanup sessions",
+        )
+        if self.reports:
+            latest = self.reports[0]
+            self.latest_card.set_values(
+                format_datetime(latest.created_at),
+                f"{format_bytes(latest.bytes_recovered)} moved",
+            )
+            self.cleanup_table.selectRow(0)
+        else:
+            self.latest_card.set_values("Not yet", "No cleanup report found")
+        self._update_detail_button()
 
     def refresh_scan_history(self) -> None:
         scans = self.report_service.list_scan_history()
@@ -180,6 +246,8 @@ class ReportsPage(QWidget):
             total_found = scan.safe_bytes + scan.review_bytes + scan.protected_bytes
             values = [
                 format_datetime(scan.started_at),
+                scan.mode.value,
+                "Canceled" if scan.canceled else "Completed",
                 format_duration(scan.duration_seconds),
                 f"{scan.total_files_scanned:,}",
                 format_bytes(total_found),
@@ -198,3 +266,15 @@ class ReportsPage(QWidget):
             QMessageBox.information(self, "No Report Selected", "Select a cleanup report first.")
             return
         ReportDetailDialog(self.reports[row], self).exec()
+
+    def _configure_table(self, table: QTableWidget) -> None:
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setStretchLastSection(True)
+
+    def _update_detail_button(self) -> None:
+        self.detail_button.setEnabled(self.cleanup_table.currentRow() >= 0)

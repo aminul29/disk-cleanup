@@ -1,17 +1,31 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QLineEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from app.models import DuplicateGroup, ScanResult
+from app.models import DuplicateGroup, ScanMode, ScanResult
+from app.ui.icons import icon
 from app.ui.widgets import Card, page_header
 from app.utils.formatting import format_bytes, format_datetime
 
 
 class DuplicatesPage(QWidget):
+    deep_scan_requested = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         self.current_groups: list[DuplicateGroup] = []
+        self.last_scan_mode: ScanMode | None = None
 
         self.review_banner = QLabel(
             "Duplicate candidates are Review-only. DiskWise suggests what to inspect, not what to delete."
@@ -23,14 +37,22 @@ class DuplicatesPage(QWidget):
         self.search_input.textChanged.connect(self.refresh_tree)
 
         self.empty_label = QLabel("Run a scan to find duplicate candidates in Downloads.")
-        self.empty_label.setObjectName("InfoPill")
+        self.empty_label.setObjectName("EmptyState")
+        self.empty_label.setMinimumHeight(120)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.run_deep_button = QPushButton("Run Deep Scan")
+        self.run_deep_button.setIcon(icon("scan-search", "#ffffff"))
+        self.run_deep_button.clicked.connect(self.deep_scan_requested.emit)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Duplicate Group", "Size", "Modified", "Location"])
         self.tree.setColumnWidth(0, 280)
         self.tree.setColumnWidth(1, 130)
         self.tree.setColumnWidth(3, 560)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().setStretchLastSection(True)
 
         card = Card()
         card_layout = QVBoxLayout(card)
@@ -39,6 +61,7 @@ class DuplicatesPage(QWidget):
         card_layout.addWidget(self.review_banner)
         card_layout.addWidget(self.search_input)
         card_layout.addWidget(self.empty_label)
+        card_layout.addWidget(self.run_deep_button, alignment=Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self.tree)
 
         layout = QVBoxLayout(self)
@@ -50,6 +73,7 @@ class DuplicatesPage(QWidget):
 
     def set_scan_result(self, result: ScanResult) -> None:
         self.current_groups = result.duplicate_groups
+        self.last_scan_mode = result.mode
         self.refresh_tree()
 
     def refresh_tree(self) -> None:
@@ -81,7 +105,15 @@ class DuplicatesPage(QWidget):
             parent.setExpanded(True)
 
         has_groups = bool(groups)
+        if not has_groups:
+            if self.current_groups:
+                self.empty_label.setText("No duplicate groups match the current search.")
+            elif self.last_scan_mode == ScanMode.DEEP:
+                self.empty_label.setText("The Deep scan did not find duplicate candidates in Downloads.")
+            else:
+                self.empty_label.setText("Duplicate analysis is included in Deep Scan.")
         self.empty_label.setVisible(not has_groups)
+        self.run_deep_button.setVisible(not has_groups and not self.current_groups)
         self.tree.setVisible(has_groups)
 
     def _group_matches(self, group: DuplicateGroup, query: str) -> bool:

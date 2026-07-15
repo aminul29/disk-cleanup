@@ -7,12 +7,14 @@ from app.models import AiRecommendation, ScanHistoryItem, ScanResult
 from app.services.ai_advisor_service import AiAdvisorService
 from app.services.report_service import ReportService
 from app.services.scan_service import ScanService
+from app.ui.icons import icon
 from app.ui.widgets import Card, StatCard, page_header
 from app.utils.formatting import format_bytes, format_datetime, format_duration
 
 
 class AiAdvisorWorker(QObject):
     completed = Signal(object)
+    failed = Signal(str)
 
     def __init__(self, ai_service: AiAdvisorService, scan_result: ScanResult) -> None:
         super().__init__()
@@ -20,7 +22,12 @@ class AiAdvisorWorker(QObject):
         self.scan_result = scan_result
 
     def run(self) -> None:
-        self.completed.emit(self.ai_service.generate_recommendations(self.scan_result))
+        try:
+            recommendation = self.ai_service.generate_recommendations(self.scan_result)
+        except Exception as exc:  # pragma: no cover - defensive worker boundary
+            self.failed.emit(str(exc))
+            return
+        self.completed.emit(recommendation)
 
 
 class DashboardPage(QWidget):
@@ -34,6 +41,7 @@ class DashboardPage(QWidget):
         self.scan_service = scan_service
         self.report_service = report_service
         self.ai_service = ai_service
+        self.ai_enabled = self.ai_service.settings_service.ai_summary_enabled()
         self.current_scan: ScanResult | None = None
         self.ai_thread: QThread | None = None
         self.ai_worker: AiAdvisorWorker | None = None
@@ -42,8 +50,10 @@ class DashboardPage(QWidget):
         self.safe_card = StatCard("Safe To Clean")
         self.review_card = StatCard("Needs Review")
         self.last_scan_card = StatCard("Last Scan")
+        self.last_scan_card.value_label.setProperty("class", "CardValueCompact")
 
         self.ai_label = QTextEdit()
+        self.ai_label.setObjectName("AdvisorText")
         self.ai_label.setReadOnly(True)
         self.ai_label.setMinimumHeight(155)
         self.ai_label.setPlainText("Run a scan to generate AI cleanup advice.")
@@ -51,6 +61,7 @@ class DashboardPage(QWidget):
         self.generate_ai_button.setProperty("class", "Secondary")
         self.generate_ai_button.setEnabled(False)
         self.generate_ai_button.clicked.connect(self.generate_ai_advice)
+        self.generate_ai_button.setIcon(icon("sparkles", "#4f7fe8"))
         ai_card = Card()
         ai_layout = QVBoxLayout(ai_card)
         ai_layout.setContentsMargins(18, 16, 18, 16)
@@ -67,6 +78,12 @@ class DashboardPage(QWidget):
         self.view_results_button.setProperty("class", "Secondary")
         self.clean_safe_button.setProperty("class", "Secondary")
         self.view_latest_report_button.setProperty("class", "Secondary")
+        self.start_scan_button.setIcon(icon("scan-search", "#ffffff"))
+        self.view_results_button.setIcon(icon("list-checks", "#4f7fe8"))
+        self.clean_safe_button.setIcon(icon("shield-check", "#4f7fe8"))
+        self.view_latest_report_button.setIcon(icon("file-text", "#4f7fe8"))
+        self.view_results_button.setEnabled(False)
+        self.clean_safe_button.setEnabled(False)
 
         actions_card = Card()
         actions_layout = QVBoxLayout(actions_card)
@@ -109,14 +126,20 @@ class DashboardPage(QWidget):
 
     def set_scan_result(self, result: ScanResult) -> None:
         self.current_scan = result
-        self.safe_card.set_values(format_bytes(result.safe_bytes), f"{result.total_files_scanned} files analyzed")
+        self.safe_card.set_values(
+            format_bytes(result.safe_bytes),
+            f"{result.total_files_scanned:,} findings",
+        )
         self.review_card.set_values(format_bytes(result.review_bytes), "Manual review required")
         self.last_scan_card.set_values(
             format_datetime(result.completed_at),
-            f"{format_duration(result.duration_seconds)} - {format_bytes(result.total_bytes_scanned)} found",
+            f"{result.mode.value} - {format_duration(result.duration_seconds)} - "
+            f"{format_bytes(result.total_bytes_scanned)} found",
         )
         self.ai_label.setPlainText(self.ai_service.generate_scan_summary(result))
-        self.generate_ai_button.setEnabled(True)
+        self.generate_ai_button.setEnabled(self.ai_enabled)
+        self.view_results_button.setEnabled(bool(result.categories))
+        self.clean_safe_button.setEnabled(result.safe_bytes > 0)
 
     def load_persisted_summary(self) -> None:
         latest_scan = self.report_service.latest_scan()
@@ -130,27 +153,38 @@ class DashboardPage(QWidget):
         else:
             self.set_scan_history(latest_scan)
 
+        if self.current_scan is None:
+            self.view_results_button.setEnabled(False)
+            self.clean_safe_button.setEnabled(False)
+
         if latest_report is not None:
             self.view_latest_report_button.setEnabled(True)
             self.view_latest_report_button.setText(
-                f"Latest Report: {format_bytes(latest_report.bytes_recovered)} recovered"
+                f"Latest Report: {format_bytes(latest_report.bytes_recovered)} moved"
             )
         else:
             self.view_latest_report_button.setText("View Latest Report")
             self.view_latest_report_button.setEnabled(False)
 
     def set_scan_history(self, scan: ScanHistoryItem) -> None:
-        self.safe_card.set_values(format_bytes(scan.safe_bytes), f"{scan.total_files_scanned:,} files analyzed")
+        self.safe_card.set_values(
+            format_bytes(scan.safe_bytes),
+            f"{scan.total_files_scanned:,} findings",
+        )
         self.review_card.set_values(format_bytes(scan.review_bytes), "Manual review required")
         self.last_scan_card.set_values(
             format_datetime(scan.completed_at),
-            f"{format_duration(scan.duration_seconds)} - {format_bytes(scan.total_bytes_scanned)} found",
+            f"{scan.mode.value} - {format_duration(scan.duration_seconds)} - "
+            f"{format_bytes(scan.total_bytes_scanned)} found",
         )
         self.ai_label.setPlainText(
             f"Latest saved scan found {format_bytes(scan.safe_bytes)} safe to clean and "
-            f"{format_bytes(scan.review_bytes)} that needs review. Run a new scan for full AI advice."
+            f"{format_bytes(scan.review_bytes)} that needs review. Run a new scan to refresh "
+            "the cleanup list."
         )
         self.generate_ai_button.setEnabled(False)
+        self.view_results_button.setEnabled(False)
+        self.clean_safe_button.setEnabled(False)
 
     def generate_ai_advice(self) -> None:
         if self.current_scan is None or self.ai_thread is not None:
@@ -163,6 +197,9 @@ class DashboardPage(QWidget):
         self.ai_thread.started.connect(self.ai_worker.run)
         self.ai_worker.completed.connect(self.on_ai_completed)
         self.ai_worker.completed.connect(self.ai_thread.quit)
+        self.ai_worker.failed.connect(self.on_ai_failed)
+        self.ai_worker.failed.connect(self.ai_thread.quit)
+        self.ai_thread.finished.connect(self.ai_worker.deleteLater)
         self.ai_thread.finished.connect(self.ai_thread.deleteLater)
         self.ai_thread.finished.connect(self._clear_ai_thread)
         self.ai_thread.start()
@@ -179,8 +216,26 @@ class DashboardPage(QWidget):
             parts.append("\nSafety notes:")
             parts.extend(f"- {note}" for note in recommendation.safety_notes)
         self.ai_label.setPlainText("\n".join(parts))
-        self.generate_ai_button.setEnabled(self.current_scan is not None)
+        self.generate_ai_button.setEnabled(self.ai_enabled and self.current_scan is not None)
+
+    def on_ai_failed(self, message: str) -> None:
+        self.ai_label.setPlainText(f"AI advice could not be generated: {message}")
+        self.generate_ai_button.setEnabled(self.ai_enabled and self.current_scan is not None)
 
     def _clear_ai_thread(self) -> None:
         self.ai_thread = None
         self.ai_worker = None
+
+    def set_scan_mode(self, mode: str) -> None:
+        self.start_scan_button.setText(f"Start {mode} Scan")
+
+    def set_ai_enabled(self, enabled: bool) -> None:
+        self.ai_enabled = enabled
+        self.generate_ai_button.setEnabled(enabled and self.current_scan is not None)
+        if not enabled:
+            self.ai_label.setPlainText("AI advice is disabled in Settings.")
+        elif self.current_scan is not None:
+            self.ai_label.setPlainText(self.ai_service.generate_scan_summary(self.current_scan))
+
+    def has_active_operation(self) -> bool:
+        return self.ai_thread is not None

@@ -62,6 +62,11 @@ def main() -> int:
         license_service = MockLicenseService()
 
         apply_app_style(app, settings_service.get_theme())
+        app.styleHints().colorSchemeChanged.connect(
+            lambda _scheme: apply_app_style(app, settings_service.get_theme())
+            if settings_service.get_theme() == "System"
+            else None
+        )
 
         window = MainWindow(
             scan_service=scan_service,

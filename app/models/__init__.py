@@ -6,6 +6,7 @@ from app.models.cleanup import (
     DuplicateGroup,
     LicenseStatus,
     RiskLevel,
+    ScanMode,
     ScanHistoryItem,
     ScanResult,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "DuplicateGroup",
     "LicenseStatus",
     "RiskLevel",
+    "ScanMode",
     "ScanHistoryItem",
     "ScanResult",
     "AiCategorySummary",

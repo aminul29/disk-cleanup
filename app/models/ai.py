@@ -13,7 +13,6 @@ class AiCategorySummary(BaseModel):
 
 
 class AiScanSummaryRequest(BaseModel):
-    scan_id: str
     total_files_scanned: int
     total_bytes_scanned: int
     safe_bytes: int

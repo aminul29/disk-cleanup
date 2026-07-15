@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, QThread, Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -22,21 +23,44 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.constants import APP_VERSION
+from app.constants import APP_VERSION, PRIVACY_POLICY_URL, SUPPORT_URL
 from app.services.ai_advisor_service import AiAdvisorService
 from app.services.license_service import MockLicenseService
 from app.services.settings_service import SettingsService
 from app.ui.styles import apply_app_style
+from app.ui.icons import icon
 from app.ui.widgets import Card, page_header
+
+
+class AiConnectionWorker(QObject):
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, settings_service: SettingsService) -> None:
+        super().__init__()
+        self.settings_service = settings_service
+
+    def run(self) -> None:
+        try:
+            recommendation = AiAdvisorService(self.settings_service).test_connection()
+        except Exception as exc:  # pragma: no cover - defensive worker boundary
+            self.failed.emit(str(exc))
+            return
+        self.completed.emit(recommendation)
 
 
 class SettingsPage(QWidget):
     history_changed = Signal()
+    scan_mode_changed = Signal(str)
+    ai_enabled_changed = Signal(bool)
+    onboarding_requested = Signal()
 
     def __init__(self, settings_service: SettingsService, license_service: MockLicenseService) -> None:
         super().__init__()
         self.settings_service = settings_service
         self.license_service = license_service
+        self.ai_thread: QThread | None = None
+        self.ai_worker: AiConnectionWorker | None = None
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["System", "Light", "Dark"])
@@ -44,37 +68,44 @@ class SettingsPage(QWidget):
         self.theme_combo.setFixedWidth(220)
         self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
 
-        self.privacy_checkbox = QCheckBox("Privacy mode enabled")
-        self.privacy_checkbox.setChecked(self.settings_service.privacy_mode_enabled())
-        self.privacy_checkbox.toggled.connect(self.settings_service.set_privacy_mode)
+        self.scan_mode_combo = QComboBox()
+        self.scan_mode_combo.addItems(["Quick", "Deep"])
+        self.scan_mode_combo.setCurrentText(self.settings_service.get_scan_mode())
+        self.scan_mode_combo.setFixedWidth(220)
+        self.scan_mode_combo.currentTextChanged.connect(self.on_scan_mode_changed)
 
-        self.ai_checkbox = QCheckBox("AI summary placeholder enabled")
+        self.privacy_checkbox = QCheckBox("Strict local mode (blocks external AI)")
+        self.privacy_checkbox.setChecked(self.settings_service.privacy_mode_enabled())
+        self.privacy_checkbox.toggled.connect(self.on_privacy_mode_changed)
+
+        self.ai_checkbox = QCheckBox("AI advice enabled")
         self.ai_checkbox.setChecked(self.settings_service.ai_summary_enabled())
-        self.ai_checkbox.toggled.connect(self.settings_service.set_ai_summary_enabled)
+        self.ai_checkbox.toggled.connect(self.on_ai_enabled_changed)
 
         self.ai_provider_combo = QComboBox()
         self.ai_provider_combo.addItems(["Mock", "OpenRouter"])
         self.ai_provider_combo.setCurrentText(self.settings_service.get_ai_provider())
-        self.ai_provider_combo.currentTextChanged.connect(self.settings_service.set_ai_provider)
+        self.ai_provider_combo.currentTextChanged.connect(self.on_ai_provider_changed)
 
         self.openrouter_model_input = QLineEdit()
         self.openrouter_model_input.setText(self.settings_service.get_openrouter_model())
         self.openrouter_model_input.setPlaceholderText("openai/gpt-4.1-mini")
-        self.openrouter_model_input.editingFinished.connect(
-            lambda: self.settings_service.set_openrouter_model(self.openrouter_model_input.text())
-        )
 
         self.openrouter_key_input = QLineEdit()
         self.openrouter_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.openrouter_key_input.setText(self.settings_service.get_openrouter_api_key())
         self.openrouter_key_input.setPlaceholderText("OpenRouter API key or use OPENROUTER_API_KEY")
-        self.openrouter_key_input.editingFinished.connect(
-            lambda: self.settings_service.set_openrouter_api_key(self.openrouter_key_input.text())
+        self.openrouter_key_input.setClearButtonEnabled(True)
+
+        self.show_key_checkbox = QCheckBox("Show key")
+        self.show_key_checkbox.toggled.connect(
+            lambda shown: self.openrouter_key_input.setEchoMode(
+                QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password
+            )
         )
 
-        self.diagnostics_checkbox = QCheckBox("Anonymous diagnostics placeholder")
-        self.diagnostics_checkbox.setChecked(self.settings_service.diagnostics_enabled())
-        self.diagnostics_checkbox.toggled.connect(self.settings_service.set_diagnostics_enabled)
+        self.ai_status_label = QLabel("API keys are encrypted for this Windows account.")
+        self.ai_status_label.setObjectName("MutedText")
 
         self.exclusions_list = QListWidget()
         self.exclusions_list.setObjectName("SettingsList")
@@ -86,7 +117,10 @@ class SettingsPage(QWidget):
         self.clear_reports_button = QPushButton("Clear Cleanup Reports")
         self.clear_history_button = QPushButton("Clear All History")
         self.reset_settings_button = QPushButton("Reset Settings")
-        self.upgrade_button = QPushButton("View Pro Plans")
+        self.show_welcome_button = QPushButton("Show Welcome")
+        self.privacy_policy_button = QPushButton("Privacy Policy")
+        self.support_button = QPushButton("Support")
+        self.upgrade_button = QPushButton("Preview Roadmap")
         self.save_ai_button = QPushButton("Save AI Settings")
         self.test_ai_button = QPushButton("Test OpenRouter")
         self.remove_exclusion_button.setProperty("class", "Secondary")
@@ -94,8 +128,23 @@ class SettingsPage(QWidget):
         self.clear_reports_button.setProperty("class", "Secondary")
         self.clear_history_button.setProperty("class", "Danger")
         self.reset_settings_button.setProperty("class", "Secondary")
+        self.show_welcome_button.setProperty("class", "Secondary")
+        self.privacy_policy_button.setProperty("class", "Secondary")
+        self.support_button.setProperty("class", "Secondary")
         self.upgrade_button.setProperty("class", "Secondary")
         self.test_ai_button.setProperty("class", "Secondary")
+        self.add_exclusion_button.setIcon(icon("folder-plus", "#ffffff"))
+        self.remove_exclusion_button.setIcon(icon("folder-minus", "#4f7fe8"))
+        self.clear_scans_button.setIcon(icon("history", "#4f7fe8"))
+        self.clear_reports_button.setIcon(icon("file-x", "#4f7fe8"))
+        self.clear_history_button.setIcon(icon("trash-2", "#ffffff"))
+        self.reset_settings_button.setIcon(icon("rotate-ccw", "#4f7fe8"))
+        self.show_welcome_button.setIcon(icon("book-open", "#4f7fe8"))
+        self.privacy_policy_button.setIcon(icon("shield", "#4f7fe8"))
+        self.support_button.setIcon(icon("circle-help", "#4f7fe8"))
+        self.upgrade_button.setIcon(icon("sparkles", "#4f7fe8"))
+        self.save_ai_button.setIcon(icon("save", "#ffffff"))
+        self.test_ai_button.setIcon(icon("plug-zap", "#4f7fe8"))
 
         for button in (
             self.add_exclusion_button,
@@ -104,6 +153,9 @@ class SettingsPage(QWidget):
             self.clear_reports_button,
             self.clear_history_button,
             self.reset_settings_button,
+            self.show_welcome_button,
+            self.privacy_policy_button,
+            self.support_button,
             self.upgrade_button,
             self.save_ai_button,
             self.test_ai_button,
@@ -117,9 +169,17 @@ class SettingsPage(QWidget):
         self.clear_reports_button.clicked.connect(self.clear_cleanup_reports)
         self.clear_history_button.clicked.connect(self.clear_history)
         self.reset_settings_button.clicked.connect(self.reset_settings)
+        self.show_welcome_button.clicked.connect(self.onboarding_requested.emit)
+        self.privacy_policy_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(PRIVACY_POLICY_URL))
+        )
+        self.support_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(SUPPORT_URL))
+        )
         self.upgrade_button.clicked.connect(self.show_pricing_placeholder)
         self.save_ai_button.clicked.connect(self.save_ai_settings)
         self.test_ai_button.clicked.connect(self.test_ai_settings)
+        self.on_ai_provider_changed(self.ai_provider_combo.currentText())
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
@@ -148,7 +208,7 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(10)
-        layout.addWidget(page_header("Settings", "Privacy, exclusions, theme, and future Pro placeholders."))
+        layout.addWidget(page_header("Settings", "Control appearance, scanning, privacy, exclusions, and local data."))
         layout.addWidget(scroll_area)
         self.refresh_exclusions()
 
@@ -170,11 +230,26 @@ class SettingsPage(QWidget):
         row_layout.addWidget(self.theme_combo)
         layout.addWidget(row)
 
-        version = QLabel(f"Version {APP_VERSION} MVP")
+        scan_row = QWidget()
+        scan_row_layout = QHBoxLayout(scan_row)
+        scan_row_layout.setContentsMargins(0, 4, 0, 0)
+        scan_label = QLabel("Default scan")
+        scan_label.setObjectName("MutedText")
+        scan_row_layout.addWidget(scan_label)
+        scan_row_layout.addStretch()
+        scan_row_layout.addWidget(self.scan_mode_combo)
+        layout.addWidget(scan_row)
+
+        version = QLabel(f"Version {APP_VERSION}")
         version.setObjectName("InfoPill")
         layout.addStretch()
         layout.addWidget(version)
-        layout.addWidget(self.reset_settings_button)
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
+        actions.addWidget(self.reset_settings_button)
+        actions.addWidget(self.show_welcome_button)
+        actions.addStretch()
+        layout.addLayout(actions)
         return card
 
     def _build_privacy_card(self) -> Card:
@@ -185,12 +260,21 @@ class SettingsPage(QWidget):
         layout.addWidget(self._section_title("Privacy & AI"))
         layout.addWidget(
             self._section_description(
-                "Privacy mode keeps cleanup conservative and explains what can be scanned or cleaned."
+                "Strict local mode prevents all external AI requests. Scanning and cleanup always stay local."
             )
         )
         layout.addWidget(self.privacy_checkbox)
-        layout.addWidget(self.diagnostics_checkbox)
+        local_only = QLabel("No diagnostic telemetry or file details are uploaded.")
+        local_only.setObjectName("InfoPill")
+        local_only.setWordWrap(True)
+        layout.addWidget(local_only)
         layout.addStretch()
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
+        actions.addWidget(self.privacy_policy_button)
+        actions.addWidget(self.support_button)
+        actions.addStretch()
+        layout.addLayout(actions)
         return card
 
     def _build_ai_card(self) -> Card:
@@ -215,8 +299,12 @@ class SettingsPage(QWidget):
         key_row = QHBoxLayout()
         key_row.setSpacing(12)
         key_row.addWidget(self._field_group("API key", self.openrouter_key_input), 2)
-        key_row.addWidget(self.ai_checkbox, 1)
+        key_options = QVBoxLayout()
+        key_options.addWidget(self.ai_checkbox)
+        key_options.addWidget(self.show_key_checkbox)
+        key_row.addLayout(key_options, 1)
         layout.addLayout(key_row)
+        layout.addWidget(self.ai_status_label)
 
         note = QLabel(
             "AI advice can prioritize cleanup and explain review items, but cleanup permissions stay deterministic."
@@ -291,10 +379,10 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(22, 20, 22, 20)
         layout.setSpacing(12)
-        layout.addWidget(self._section_title("Future Pro"))
+        layout.addWidget(self._section_title("Planned Pro"))
         layout.addWidget(
             self._section_description(
-                "Scheduled cleanup, advanced duplicate cleanup, and AI assistant features will live here later."
+                "Scheduled cleanup, advanced duplicate actions, and expanded AI tools are planned."
             )
         )
         plan = QLabel("Current plan: Free")
@@ -338,6 +426,34 @@ class SettingsPage(QWidget):
         app = QApplication.instance()
         if app is not None:
             apply_app_style(app, theme)
+
+    def on_scan_mode_changed(self, mode: str) -> None:
+        self.settings_service.set_scan_mode(mode)
+        self.scan_mode_changed.emit(mode)
+
+    def on_ai_provider_changed(self, provider: str) -> None:
+        uses_openrouter = provider == "OpenRouter"
+        self.openrouter_model_input.setEnabled(uses_openrouter)
+        self.openrouter_key_input.setEnabled(uses_openrouter)
+        self.show_key_checkbox.setEnabled(uses_openrouter)
+        self.test_ai_button.setEnabled(uses_openrouter and self.ai_thread is None)
+        self._update_ai_privacy_status()
+
+    def on_ai_enabled_changed(self, enabled: bool) -> None:
+        self.settings_service.set_ai_summary_enabled(enabled)
+        self.ai_enabled_changed.emit(enabled)
+
+    def on_privacy_mode_changed(self, enabled: bool) -> None:
+        self.settings_service.set_privacy_mode(enabled)
+        self._update_ai_privacy_status()
+
+    def _update_ai_privacy_status(self) -> None:
+        if self.ai_provider_combo.currentText() == "OpenRouter" and self.privacy_checkbox.isChecked():
+            self.ai_status_label.setText(
+                "Strict local mode is on. OpenRouter requests are blocked until it is turned off."
+            )
+        else:
+            self.ai_status_label.setText("API keys are encrypted for this Windows account.")
 
     def refresh_exclusions(self) -> None:
         self.exclusions_list.clear()
@@ -413,45 +529,86 @@ class SettingsPage(QWidget):
         confirmed = QMessageBox.question(
             self,
             "Reset Settings",
-            "Reset theme, privacy, AI, and diagnostics preferences to defaults? Excluded folders are kept.",
+            "Reset theme, scan mode, privacy, and AI preferences to defaults? Excluded folders are kept.",
         )
         if confirmed == QMessageBox.StandardButton.Yes:
             self.settings_service.reset_settings()
             self.theme_combo.setCurrentText(self.settings_service.get_theme())
             self.privacy_checkbox.setChecked(self.settings_service.privacy_mode_enabled())
             self.ai_checkbox.setChecked(self.settings_service.ai_summary_enabled())
-            self.diagnostics_checkbox.setChecked(self.settings_service.diagnostics_enabled())
             self.ai_provider_combo.setCurrentText(self.settings_service.get_ai_provider())
             self.openrouter_model_input.setText(self.settings_service.get_openrouter_model())
+            self.openrouter_key_input.clear()
+            self.scan_mode_combo.setCurrentText(self.settings_service.get_scan_mode())
             QMessageBox.information(self, "Settings Reset", "Settings have been reset to defaults.")
 
     def save_ai_settings(self) -> None:
-        self._save_ai_settings_silently()
-        QMessageBox.information(self, "AI Settings Saved", "AI settings have been saved.")
+        try:
+            self._save_ai_settings_silently()
+        except Exception as exc:
+            QMessageBox.warning(self, "Could Not Save AI Settings", str(exc))
+            return
+        if self.ai_provider_combo.currentText() == "OpenRouter" and self.privacy_checkbox.isChecked():
+            self._update_ai_privacy_status()
+        else:
+            self.ai_status_label.setText(
+                "AI settings saved. The API key is encrypted with Windows DPAPI."
+            )
 
     def _save_ai_settings_silently(self) -> None:
+        if (
+            self.ai_provider_combo.currentText() == "OpenRouter"
+            and not self.openrouter_model_input.text().strip()
+        ):
+            raise ValueError("Enter an OpenRouter model name before saving.")
         self.settings_service.set_ai_provider(self.ai_provider_combo.currentText())
         self.settings_service.set_openrouter_model(self.openrouter_model_input.text())
         self.settings_service.set_openrouter_api_key(self.openrouter_key_input.text())
         self.settings_service.set_ai_summary_enabled(self.ai_checkbox.isChecked())
 
     def test_ai_settings(self) -> None:
-        self._save_ai_settings_silently()
+        if self.ai_thread is not None:
+            return
+        try:
+            self._save_ai_settings_silently()
+        except Exception as exc:
+            QMessageBox.warning(self, "Could Not Save AI Settings", str(exc))
+            return
         self.test_ai_button.setEnabled(False)
         self.test_ai_button.setText("Testing...")
-        QApplication.processEvents()
-        recommendation = AiAdvisorService(self.settings_service).test_connection()
+        self.ai_status_label.setText("Connecting to OpenRouter...")
+        self.ai_thread = QThread()
+        self.ai_worker = AiConnectionWorker(self.settings_service)
+        self.ai_worker.moveToThread(self.ai_thread)
+        self.ai_thread.started.connect(self.ai_worker.run)
+        self.ai_worker.completed.connect(self.on_ai_test_completed)
+        self.ai_worker.completed.connect(self.ai_thread.quit)
+        self.ai_worker.failed.connect(self.on_ai_test_failed)
+        self.ai_worker.failed.connect(self.ai_thread.quit)
+        self.ai_thread.finished.connect(self.ai_worker.deleteLater)
+        self.ai_thread.finished.connect(self.ai_thread.deleteLater)
+        self.ai_thread.finished.connect(self._clear_ai_thread)
+        self.ai_thread.start()
+
+    def on_ai_test_completed(self, recommendation) -> None:
+        self.ai_status_label.setText(recommendation.summary)
+
+    def on_ai_test_failed(self, message: str) -> None:
+        self.ai_status_label.setText(f"Connection test failed: {message}")
+
+    def _clear_ai_thread(self) -> None:
+        self.ai_thread = None
+        self.ai_worker = None
         self.test_ai_button.setEnabled(True)
         self.test_ai_button.setText("Test OpenRouter")
-        QMessageBox.information(
-            self,
-            "AI Test Result",
-            recommendation.summary,
-        )
 
     def show_pricing_placeholder(self) -> None:
         QMessageBox.information(
             self,
-            "Future Pro Plans",
-            "Free\nPro Monthly\nPro Yearly\n\n" + self.license_service.pricing_message(),
+            "Planned Pro Features",
+            "Scheduled cleanup\nAdvanced duplicate actions\nExpanded AI tools\n\n"
+            + self.license_service.pricing_message(),
         )
+
+    def has_active_operation(self) -> bool:
+        return self.ai_thread is not None

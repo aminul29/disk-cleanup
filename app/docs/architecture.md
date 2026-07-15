@@ -22,7 +22,7 @@ app/
 3. `ReportService` stores scan summary data in SQLite.
 4. UI pages render categories, large files, and duplicate groups.
 5. `ResultsPage` builds a cleanup preview from selected Safe items.
-6. `CleanupService` validates risk and safe paths again before deletion.
+6. `CleanupService` validates risk and safe paths again in a background worker before Recycle Bin cleanup.
 7. `ReportService` stores cleanup reports in SQLite.
 8. `ReportsPage` displays cleanup report details and previous scan sessions from SQLite.
 9. `DashboardPage` reads the latest saved scan/report on startup so the app is useful across sessions.
@@ -40,7 +40,8 @@ app/
 
 SQLite is stored under the OS app data directory using `platformdirs`.
 
-The MVP stores summary data by default and uses scan details in memory for the active session.
+DiskWise stores summary data by default and keeps individual scan findings in memory for the active session.
+OpenRouter API keys are encrypted with Windows DPAPI before being stored in settings.
 
 ## Runtime Reliability
 
@@ -53,3 +54,4 @@ The MVP stores summary data by default and uses scan details in memory for the a
 AI can explain, prioritize, and recommend cleanup review steps. AI cannot authorize deletion. `CleanupService` still enforces deterministic Safe-only cleanup rules.
 
 AI output is rendered as structured advice in Dashboard and Results. Results uses safe cleanup plan, review priorities, warnings, and confidence fields when the provider returns them.
+Strict local mode blocks external AI requests. When OpenRouter is allowed, the request model contains aggregate category data only.

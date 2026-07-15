@@ -2,27 +2,34 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from app.models import CleanupItem, ScanResult
+from app.models import CleanupItem, ScanMode, ScanResult
+from app.ui.icons import icon
 from app.ui.widgets import Card, page_header
 from app.utils.formatting import format_bytes, format_datetime
 
 
 class LargeFilesPage(QWidget):
+    deep_scan_requested = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         self.current_items: list[CleanupItem] = []
+        self.last_scan_mode: ScanMode | None = None
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search file name, path, or type")
@@ -42,19 +49,29 @@ class LargeFilesPage(QWidget):
         self.filter_combo.currentIndexChanged.connect(self.refresh_table)
 
         self.review_banner = QLabel(
-            "Large files are Review-only. DiskWise will not delete them in this MVP."
+            "Large files are Review-only. DiskWise never deletes them automatically."
         )
         self.review_banner.setObjectName("InfoPill")
 
         self.empty_label = QLabel("Run a scan to find large files that may need review.")
-        self.empty_label.setObjectName("InfoPill")
+        self.empty_label.setObjectName("EmptyState")
+        self.empty_label.setMinimumHeight(120)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.run_deep_button = QPushButton("Run Deep Scan")
+        self.run_deep_button.setIcon(icon("scan-search", "#ffffff"))
+        self.run_deep_button.clicked.connect(self.deep_scan_requested.emit)
 
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(["Name", "Path", "Size", "Modified", "Type", "Risk", "Reason"])
         self.table.setColumnWidth(0, 220)
         self.table.setColumnWidth(1, 420)
         self.table.setColumnWidth(6, 300)
+        self.table.setAlternatingRowColors(True)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(True)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
@@ -70,6 +87,7 @@ class LargeFilesPage(QWidget):
         card_layout.addWidget(self.review_banner)
         card_layout.addWidget(filters)
         card_layout.addWidget(self.empty_label)
+        card_layout.addWidget(self.run_deep_button, alignment=Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self.table)
 
         layout = QVBoxLayout(self)
@@ -81,6 +99,7 @@ class LargeFilesPage(QWidget):
 
     def set_scan_result(self, result: ScanResult) -> None:
         self.current_items = result.large_files
+        self.last_scan_mode = result.mode
         self.refresh_table()
 
     def refresh_table(self) -> None:
@@ -103,7 +122,15 @@ class LargeFilesPage(QWidget):
                 self.table.setItem(row, column, table_item)
 
         has_items = bool(items)
+        if not has_items:
+            if self.current_items:
+                self.empty_label.setText("No large files match the current filters.")
+            elif self.last_scan_mode == ScanMode.DEEP:
+                self.empty_label.setText("The Deep scan did not find large files in supported locations.")
+            else:
+                self.empty_label.setText("Large-file analysis is included in Deep Scan.")
         self.empty_label.setVisible(not has_items)
+        self.run_deep_button.setVisible(not has_items and not self.current_items)
         self.table.setVisible(has_items)
 
     def filtered_items(self) -> list[CleanupItem]:

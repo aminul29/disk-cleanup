@@ -19,6 +19,8 @@ class ReportService:
             "large_file_count": len(result.large_files),
             "duplicate_group_count": len(result.duplicate_groups),
             "errors": result.errors,
+            "mode": result.mode.value,
+            "canceled": result.canceled,
         }
         with self.database.connect() as connection:
             connection.execute(
@@ -54,9 +56,13 @@ class ReportService:
             categories_cleaned=result.categories_cleaned,
             errors=result.errors,
             summary=(
-                f"Recovered {format_bytes(result.bytes_recovered)} from "
-                f"{result.files_deleted} safe cleanup item(s)."
+                f"Moved {format_bytes(result.bytes_recovered)} from "
+                f"{result.files_deleted} Safe item(s) to the Recycle Bin."
             ),
+            duration_seconds=result.duration_seconds,
+            free_space_before_bytes=result.free_space_before_bytes,
+            free_space_after_bytes=result.free_space_after_bytes,
+            canceled=result.canceled,
         )
         self.save_cleanup_report(report)
         return report
@@ -67,8 +73,9 @@ class ReportService:
                 """
                 INSERT OR REPLACE INTO cleanup_reports (
                     report_id, scan_id, created_at, files_deleted, files_skipped,
-                    bytes_recovered, categories_cleaned, errors, summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    bytes_recovered, categories_cleaned, errors, summary,
+                    duration_seconds, free_space_before_bytes, free_space_after_bytes, canceled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     report.report_id,
@@ -80,6 +87,10 @@ class ReportService:
                     json.dumps(report.categories_cleaned),
                     json.dumps(report.errors),
                     report.summary,
+                    report.duration_seconds,
+                    report.free_space_before_bytes,
+                    report.free_space_after_bytes,
+                    int(report.canceled),
                 ),
             )
 
@@ -101,6 +112,10 @@ class ReportService:
                     categories_cleaned=json.loads(row["categories_cleaned"]),
                     errors=json.loads(row["errors"]),
                     summary=row["summary"],
+                    duration_seconds=row["duration_seconds"],
+                    free_space_before_bytes=row["free_space_before_bytes"],
+                    free_space_after_bytes=row["free_space_after_bytes"],
+                    canceled=bool(row["canceled"]),
                 )
             )
         return reports
@@ -116,6 +131,13 @@ class ReportService:
         scans: list[ScanHistoryItem] = []
         for row in rows:
             summary = json.loads(row["summary_json"])
+            legacy_mode = (
+                "Deep"
+                if int(summary.get("large_file_count", 0))
+                or int(summary.get("duplicate_group_count", 0))
+                or int(row["review_bytes"])
+                else "Quick"
+            )
             scans.append(
                 ScanHistoryItem(
                     scan_id=row["scan_id"],
@@ -133,6 +155,8 @@ class ReportService:
                     large_file_count=int(summary.get("large_file_count", 0)),
                     duplicate_group_count=int(summary.get("duplicate_group_count", 0)),
                     error_count=len(summary.get("errors", [])),
+                    mode=summary.get("mode", legacy_mode),
+                    canceled=bool(summary.get("canceled", False)),
                 )
             )
         return scans

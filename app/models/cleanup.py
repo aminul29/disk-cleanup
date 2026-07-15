@@ -12,6 +12,11 @@ class RiskLevel(str, Enum):
     PROTECTED = "Protected"
 
 
+class ScanMode(str, Enum):
+    QUICK = "Quick"
+    DEEP = "Deep"
+
+
 class CleanupItem(BaseModel):
     id: str
     file_name: str
@@ -56,6 +61,8 @@ class ScanResult(BaseModel):
     safe_bytes: int
     review_bytes: int
     protected_bytes: int
+    mode: ScanMode = ScanMode.QUICK
+    canceled: bool = False
     categories: list[CleanupCategory] = Field(default_factory=list)
     large_files: list[CleanupItem] = Field(default_factory=list)
     duplicate_groups: list[DuplicateGroup] = Field(default_factory=list)
@@ -71,6 +78,12 @@ class CleanupResult(BaseModel):
     bytes_recovered: int
     categories_cleaned: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    deleted_item_ids: list[str] = Field(default_factory=list)
+    skipped_item_ids: list[str] = Field(default_factory=list)
+    canceled: bool = False
+    duration_seconds: float = 0.0
+    free_space_before_bytes: int = 0
+    free_space_after_bytes: int = 0
 
 
 class CleanupReport(BaseModel):
@@ -83,6 +96,10 @@ class CleanupReport(BaseModel):
     categories_cleaned: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     summary: str
+    duration_seconds: float = 0.0
+    free_space_before_bytes: int = 0
+    free_space_after_bytes: int = 0
+    canceled: bool = False
 
 
 class LicenseStatus(BaseModel):
@@ -105,3 +122,5 @@ class ScanHistoryItem(BaseModel):
     large_file_count: int
     duplicate_group_count: int
     error_count: int
+    mode: ScanMode = ScanMode.QUICK
+    canceled: bool = False

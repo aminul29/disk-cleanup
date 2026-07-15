@@ -1,22 +1,30 @@
 # DiskWise AI
 
-DiskWise AI is a lightweight Windows desktop MVP for local-first disk cleanup. It is built with Python, PySide6, SQLite, psutil, platformdirs, pydantic, and send2trash.
+DiskWise AI is a local-first Windows disk cleanup and storage-review app built with Python 3.12, PySide6, SQLite, psutil, pydantic, platformdirs, and send2trash.
 
-The app scans common user-level locations, classifies findings by risk, previews cleanup, and deletes only user-approved Safe items. Review and Protected items are never cleaned by the MVP.
+It scans supported user-level locations, classifies findings as Safe, Review, or Protected, previews cleanup, and moves only selected Safe files to the Windows Recycle Bin. Review and Protected files are never cleaned.
 
-## Tech Stack
+## Core Features
 
-- Python 3.12
-- PySide6 for desktop UI
-- SQLite for local reports and settings
-- psutil for disk usage
-- platformdirs for app data paths
-- pydantic for typed models
-- PyInstaller for later executable packaging
-- pytest for safety and persistence tests
-- send2trash for recycle-bin deletion where possible
+- Dashboard with disk usage, scan state, and latest local report.
+- Quick Scan for temporary files and known browser, thumbnail, and app caches.
+- Deep Scan for Quick Scan locations plus Downloads review, large files, and duplicate candidates.
+- Cleanup preview, explicit confirmation, progress, cancellation, and Recycle Bin cleanup.
+- Local SQLite scan history, cleanup reports, exclusions, and settings.
+- Optional OpenRouter advice using aggregate category totals only.
+- Strict local mode that blocks all external AI requests.
+- OpenRouter keys encrypted with Windows DPAPI; no key is included in source or builds.
+- Light, dark, and Windows system themes.
 
-No Rust, Visual Studio, .NET SDK, Windows App SDK, or MSIX tooling is required for MVP development.
+## Safety Rules
+
+- Safe items are selected by default and revalidated immediately before cleanup.
+- Review items require manual inspection and are never deleted by DiskWise.
+- Protected items cannot be selected or deleted.
+- System folders, Program Files, source repositories, password-manager data, and personal folders are excluded from automatic cleanup.
+- Scanning stays local. File names, paths, and contents are never sent to an AI provider.
+
+See [cleanup-rules.md](app/docs/cleanup-rules.md) and [privacy-policy.md](app/docs/privacy-policy.md).
 
 ## Run Locally
 
@@ -26,7 +34,7 @@ uv pip install --python .\.venv\Scripts\python.exe -r requirements.txt
 .\.venv\Scripts\python.exe -m app.main
 ```
 
-If you use a standard Python install instead of uv:
+With a standard Python installation:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -34,55 +42,40 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m app.main
 ```
 
+Rust, Visual Studio, .NET, WinUI, and the Windows App SDK are not required.
+
 ## Test
 
 ```powershell
 .\scripts\test.ps1
 ```
 
-## Build Prep
+## Build Windows App
 
-Packaging is still a later milestone. For development, a PyInstaller one-folder build script is available:
+Create the tested PyInstaller one-folder build:
 
 ```powershell
 .\scripts\build.ps1
 ```
 
-The build output is written to `dist\DiskWiseAI\DiskWiseAI.exe`.
+Output: `dist\DiskWiseAI\DiskWiseAI.exe`
 
-For release distribution, MSIX is the recommended target because it is better aligned with Microsoft Store delivery, app identity, updates, and Windows integration.
+## Build Microsoft Store MSIX
 
-## Current MVP Features
+Install the Windows 10 or 11 SDK with MSIX Packaging Tools and Windows App Certification Kit. Then reserve the app name in Partner Center and use the exact package identity values shown there:
 
-- Dashboard with disk usage, reclaimable space, last scan, and AI-style local summary.
-- Dashboard restores the latest saved scan and cleanup report after restart.
-- Single-instance startup guard.
-- Local rotating log file in the app log directory.
-- Sidebar navigation: Dashboard, Smart Scan, Results, Large Files, Duplicates, Reports, Settings.
-- Quick scan for user temp files, browser cache, thumbnail cache, user app cache, Downloads review candidates, large files, and duplicate candidates.
-- Risk classification: Safe, Review, Protected.
-- Cleanup preview with explicit confirmation.
-- Safe cleanup only.
-- Cleanup reports stored in SQLite.
-- Scan sessions stored in SQLite and visible in Reports.
-- Settings for theme, privacy mode, exclusions, diagnostics placeholder, reset settings, and separate history clearing.
-- Mock AI and OpenRouter AI advisor providers.
-- Results page AI advice panel with structured safe plan, review priorities, warnings, and confidence.
-- License and pricing placeholders.
+```powershell
+.\scripts\build-msix.ps1 `
+  -IdentityName "PARTNER_CENTER_IDENTITY_NAME" `
+  -Publisher "CN=PARTNER_CENTER_PUBLISHER" `
+  -PublisherDisplayName "YOUR_PUBLISHER_NAME" `
+  -Version "0.1.0.0"
+```
 
-## Safety Philosophy
+The Store signs the uploaded MSIX. Validate it before submission:
 
-DiskWise AI scans locally, classifies conservatively, explains clearly, and cleans only after user approval.
+```powershell
+.\scripts\run-wack.ps1 -PackagePath .\dist\msix\DiskWiseAI_0.1.0.0_x64.msix
+```
 
-Hard rules:
-
-- Review and Protected items are never deleted.
-- Safe items are the only items selected by default.
-- Cleanup is previewed before execution.
-- System folders, Program Files, registry, and admin-only areas are outside MVP cleanup scope.
-- No file names, paths, or contents are uploaded.
-- OpenRouter AI receives aggregate scan totals and category summaries only when explicitly configured.
-
-## Future Milestones
-
-MSIX packaging, payment, backend licensing, and OpenRouter-backed summaries are intentionally deferred.
+Submission copy, privacy details, and release gates are in [store-listing.md](app/docs/store-listing.md) and [store-submission-checklist.md](app/docs/store-submission-checklist.md).

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+import logging
 
 from app.database.local_database import LocalDatabase
+from app.utils.secret_store import protect_secret, unprotect_secret
 
 
 class SettingsService:
     def __init__(self, database: LocalDatabase) -> None:
         self.database = database
+        self.logger = logging.getLogger(__name__)
         if self.database.get_setting("privacy_mode", None) is None:
             self.database.set_setting("privacy_mode", True)
         if self.database.get_setting("theme", None) is None:
@@ -16,12 +19,28 @@ class SettingsService:
             self.database.set_setting("ai_provider", "Mock")
         if self.database.get_setting("openrouter_model", None) is None:
             self.database.set_setting("openrouter_model", "openai/gpt-4.1-mini")
+        if self.database.get_setting("scan_mode", None) is None:
+            self.database.set_setting("scan_mode", "Quick")
+        if self.database.get_setting("onboarding_completed", None) is None:
+            self.database.set_setting("onboarding_completed", False)
 
     def get_theme(self) -> str:
         return str(self.database.get_setting("theme", "System"))
 
     def set_theme(self, theme: str) -> None:
         self.database.set_setting("theme", theme)
+
+    def get_scan_mode(self) -> str:
+        return str(self.database.get_setting("scan_mode", "Quick"))
+
+    def set_scan_mode(self, mode: str) -> None:
+        self.database.set_setting("scan_mode", "Deep" if mode == "Deep" else "Quick")
+
+    def onboarding_completed(self) -> bool:
+        return bool(self.database.get_setting("onboarding_completed", False))
+
+    def set_onboarding_completed(self, completed: bool) -> None:
+        self.database.set_setting("onboarding_completed", completed)
 
     def privacy_mode_enabled(self) -> bool:
         return bool(self.database.get_setting("privacy_mode", True))
@@ -42,22 +61,33 @@ class SettingsService:
         self.database.set_setting("ai_provider", provider)
 
     def get_openrouter_api_key(self) -> str:
-        return str(self.database.get_setting("openrouter_api_key", ""))
+        protected = str(self.database.get_setting("openrouter_api_key_secure", ""))
+        if protected:
+            try:
+                return unprotect_secret(protected)
+            except (OSError, ValueError) as exc:
+                self.logger.warning("Could not decrypt the saved OpenRouter key: %s", exc)
+                return ""
+
+        legacy = str(self.database.get_setting("openrouter_api_key", ""))
+        if legacy:
+            self.set_openrouter_api_key(legacy)
+            return legacy.strip()
+        return ""
 
     def set_openrouter_api_key(self, api_key: str) -> None:
-        self.database.set_setting("openrouter_api_key", api_key.strip())
+        cleaned = api_key.strip()
+        self.database.set_setting(
+            "openrouter_api_key_secure",
+            protect_secret(cleaned) if cleaned else "",
+        )
+        self.database.delete_setting("openrouter_api_key")
 
     def get_openrouter_model(self) -> str:
         return str(self.database.get_setting("openrouter_model", "openai/gpt-4.1-mini"))
 
     def set_openrouter_model(self, model: str) -> None:
         self.database.set_setting("openrouter_model", model.strip())
-
-    def diagnostics_enabled(self) -> bool:
-        return bool(self.database.get_setting("diagnostics", False))
-
-    def set_diagnostics_enabled(self, enabled: bool) -> None:
-        self.database.set_setting("diagnostics", enabled)
 
     def get_excluded_folders(self) -> list[Path]:
         with self.database.connect() as connection:
@@ -90,6 +120,6 @@ class SettingsService:
         self.database.set_setting("privacy_mode", True)
         self.database.set_setting("theme", "System")
         self.database.set_setting("ai_summary", True)
-        self.database.set_setting("diagnostics", False)
         self.database.set_setting("ai_provider", "Mock")
         self.database.set_setting("openrouter_model", "openai/gpt-4.1-mini")
+        self.database.set_setting("scan_mode", "Quick")
